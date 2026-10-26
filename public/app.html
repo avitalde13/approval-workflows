@@ -37,6 +37,25 @@
           <p>Your role: <span class="role" id="ws-role"></span></p>
         </div>
       </div>
+      <!-- Admins only -->
+      <div class="card" id="invite-card" style="margin-bottom:20px" hidden>
+        <div class="card-head"><h2>Invite people</h2></div>
+        <form class="invite-form" id="invite-form" novalidate>
+          <input type="email" id="invite-email" placeholder="colleague@company.com" aria-label="Email address" autocomplete="off">
+          <select id="invite-role" aria-label="Role">
+            <option value="employee">Employee</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button class="btn btn-primary" type="submit" id="invite-btn">Send invite</button>
+        </form>
+        <p class="notice" id="invite-msg" hidden></p>
+        <table id="pending-table" hidden>
+          <thead><tr><th>Pending invitation</th><th>Role</th><th class="hide-sm">Expires</th><th></th></tr></thead>
+          <tbody id="pending"></tbody>
+        </table>
+      </div>
+
       <div class="card">
         <div class="card-head"><h2>Members</h2><span id="member-count" style="color:var(--muted)"></span></div>
         <table>
@@ -125,6 +144,10 @@
     async function showWorkspace(id) {
       saveWorkspaceId(id);
       const ws = await api(`/api/workspaces/${id}`);
+      currentWs = ws;
+      $('invite-card').hidden = ws.role !== 'admin';
+      $('invite-msg').hidden = true;
+      if (ws.role === 'admin') loadInvitations().catch((err) => showInviteMessage(err.message, false));
       document.title = `${ws.name} – Approval Workflows`;
       $('ws-name').textContent = ws.name;
       $('ws-role').textContent = ws.role;
@@ -156,6 +179,73 @@
         return tr;
       }));
     }
+
+    let currentWs = null;
+
+    function showInviteMessage(text, ok) {
+      $('invite-msg').textContent = text;
+      $('invite-msg').className = ok ? 'notice notice-ok' : 'notice notice-error';
+      $('invite-msg').hidden = false;
+    }
+
+    async function loadInvitations() {
+      const { invitations } = await api(`/api/workspaces/${currentWs.id}/invitations`);
+      $('pending-table').hidden = invitations.length === 0;
+      const fmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+      $('pending').replaceChildren(...invitations.map((inv) => {
+        const tr = document.createElement('tr');
+        const email = document.createElement('td');
+        email.textContent = inv.email;
+        const role = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `role role-${inv.role}`;
+        badge.textContent = inv.role;
+        role.append(badge);
+        const exp = document.createElement('td');
+        exp.className = 'hide-sm';
+        exp.textContent = fmt.format(new Date(inv.expires_at));
+        const actions = document.createElement('td');
+        actions.style.textAlign = 'right';
+        const resend = Object.assign(document.createElement('button'), { className: 'link-btn', type: 'button', textContent: 'Resend' });
+        resend.addEventListener('click', async () => {
+          resend.disabled = true;
+          try {
+            await api(`/api/workspaces/${currentWs.id}/invitations`, { method: 'POST', body: JSON.stringify({ email: inv.email, role: inv.role }) });
+            showInviteMessage(`New invitation sent to ${inv.email}.`, true);
+            await loadInvitations();
+          } catch (err) { showInviteMessage(err.message, false); resend.disabled = false; }
+        });
+        const revoke = Object.assign(document.createElement('button'), { className: 'link-btn danger', type: 'button', textContent: 'Revoke' });
+        revoke.addEventListener('click', async () => {
+          if (!confirm(`Revoke the invitation for ${inv.email}?`)) return;
+          try {
+            await api(`/api/workspaces/${currentWs.id}/invitations/${inv.id}`, { method: 'DELETE', body: '{}' });
+            showInviteMessage(`Invitation for ${inv.email} revoked.`, true);
+            await loadInvitations();
+          } catch (err) { showInviteMessage(err.message, false); }
+        });
+        actions.append(resend, revoke);
+        tr.append(email, role, exp, actions);
+        return tr;
+      }));
+    }
+
+    $('invite-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = $('invite-email').value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showInviteMessage('Enter a valid email address.', false);
+      $('invite-btn').disabled = true;
+      try {
+        await api(`/api/workspaces/${currentWs.id}/invitations`, { method: 'POST', body: JSON.stringify({ email, role: $('invite-role').value }) });
+        showInviteMessage(`Invitation sent to ${email}.`, true);
+        $('invite-email').value = '';
+        await loadInvitations();
+      } catch (err) {
+        showInviteMessage(err.message, false);
+      } finally {
+        $('invite-btn').disabled = false;
+      }
+    });
 
     async function createWorkspace(name, errorEl, btn) {
       errorEl.hidden = true;

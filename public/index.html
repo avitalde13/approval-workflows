@@ -45,7 +45,9 @@
       email_not_verified: 'Your Google email address is not verified.',
       google_not_configured: 'Google sign-in is not configured yet.',
     };
-    const err = new URLSearchParams(location.search).get('error');
+    const params = new URLSearchParams(location.search);
+    const next = params.get('next') || '';
+    const err = params.get('error');
     if (err) {
       document.getElementById('error').textContent = ERRORS[err] || 'Sign-in failed. Please try again.';
       document.getElementById('error').hidden = false;
@@ -53,6 +55,7 @@
 
     fetch('/auth/config').then((r) => r.json()).then(({ google, devLogin }) => {
       document.getElementById('google').hidden = !google;
+      if (next) document.getElementById('google').href = `/auth/google?next=${encodeURIComponent(next)}`;
       document.getElementById('dev').hidden = !devLogin;
       document.getElementById('dev-divider').hidden = !(google && devLogin);
     });
@@ -64,9 +67,9 @@
       const res = await fetch('/auth/dev-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: document.getElementById('dev-email').value, name: document.getElementById('dev-name').value }),
+        body: JSON.stringify({ email: document.getElementById('dev-email').value, name: document.getElementById('dev-name').value, next }),
       }).catch(() => null);
-      if (res && res.ok) return location.assign('/app');
+      if (res && res.ok) return location.assign((await res.json()).next || '/app');
       const body = res ? await res.json().catch(() => ({})) : {};
       document.getElementById('error').textContent = body.error || 'Sign-in failed. Please try again.';
       document.getElementById('error').hidden = false;

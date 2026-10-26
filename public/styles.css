@@ -77,3 +77,21 @@ tr:last-child td { border-bottom: 0; }
   .inline-form { flex-direction: column; } .hide-sm { display: none; }
   th, td { padding: 10px 12px; }
 }
+
+/* Invitations */
+.invite-form { display: flex; gap: 10px; padding: 16px 20px; flex-wrap: wrap; }
+.invite-form input { flex: 1 1 220px; }
+.invite-form select { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+.notice { margin: 0 20px 16px; padding: 10px 12px; border-radius: 10px; font-size: 14px; }
+.notice-ok { background: var(--ok-bg); color: var(--ok); }
+.notice-error { background: var(--danger-bg); color: var(--danger); }
+#pending-table { border-top: 1px solid var(--border); }
+.link-btn { font: inherit; font-size: 14px; font-weight: 600; background: none; border: 0; color: var(--brand); cursor: pointer; padding: 4px 6px; }
+.link-btn.danger { color: var(--danger); }
+.link-btn:disabled { opacity: .5; }
+.topbar .btn { white-space: nowrap; }
+@media (max-width: 600px) {
+  .topbar-right { gap: 8px; }
+  .topbar .btn { padding: 8px 10px; font-size: 14px; }
+  .ws-select { max-width: 120px; }
+}

@@ -3,14 +3,15 @@
 const http = require('http');
 const { createPool, migrate } = require('../src/db');
 const { createApp } = require('../src/app');
+const { createMailer } = require('../src/email/mailer');
 
-async function startApp({ fetchImpl } = {}) {
+async function startApp({ fetchImpl, mailer = createMailer({ provider: 'console' }, { log: () => {} }) } = {}) {
   const pool = createPool('');
   await migrate(pool);
-  const server = http.createServer(createApp({ pool, fetchImpl }));
+  const server = http.createServer(createApp({ pool, fetchImpl, mailer }));
   await new Promise((resolve) => server.listen(0, resolve));
   const base = `http://localhost:${server.address().port}`;
-  return { pool, base, close: () => new Promise((resolve) => server.close(resolve)) };
+  return { pool, base, mailer, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
 // Acts like one browser: remembers cookies between requests, never follows redirects.

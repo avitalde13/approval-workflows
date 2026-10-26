@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const { requireUser } = require('../auth/sessions');
+const { membershipRole, parseId } = require('../workspaces');
 
 const NAME_MIN = 2;
 const NAME_MAX = 80;
@@ -12,11 +13,6 @@ function slugify(name) {
   return `${base}-${crypto.randomBytes(3).toString('hex')}`;
 }
 
-// The user's role in a workspace, or null if they are not a member.
-async function membershipRole(pool, workspaceId, userId) {
-  const { rows } = await pool.query('SELECT role FROM memberships WHERE workspace_id = $1 AND user_id = $2', [workspaceId, userId]);
-  return rows[0]?.role || null;
-}
 
 function apiRoutes(pool) {
   const router = express.Router();
@@ -63,8 +59,8 @@ function apiRoutes(pool) {
 
   // Workspace details and members. Non-members get 404, so other companies' workspaces stay invisible.
   router.get('/workspaces/:id', async (req, res, next) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id < 1) return res.status(404).json({ error: 'Workspace not found.' });
+    const id = parseId(req.params.id);
+    if (!id) return res.status(404).json({ error: 'Workspace not found.' });
     try {
       const role = await membershipRole(pool, id, req.user.id);
       if (!role) return res.status(404).json({ error: 'Workspace not found.' });

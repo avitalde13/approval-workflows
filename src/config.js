@@ -13,6 +13,15 @@ const config = {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
   },
   sessionDays: 30,
+  inviteDays: 7,
+  email: {
+    // "console" (development: emails are printed and kept in /dev/outbox), "brevo" or "resend".
+    provider: (process.env.EMAIL_PROVIDER || 'console').toLowerCase(),
+    from: process.env.EMAIL_FROM || '',
+    fromName: process.env.EMAIL_FROM_NAME || 'Approval Workflows',
+    brevoApiKey: process.env.BREVO_API_KEY || '',
+    resendApiKey: process.env.RESEND_API_KEY || '',
+  },
 };
 
 // Developer login is only for local work: never in production, and only when Google isn't set up.
@@ -25,6 +34,10 @@ function assertProductionConfig() {
   if (config.sessionSecret.length < 32) missing.push('SESSION_SECRET (at least 32 characters)');
   if (!config.google.clientId) missing.push('GOOGLE_CLIENT_ID');
   if (!config.google.clientSecret) missing.push('GOOGLE_CLIENT_SECRET');
+  if (config.email.provider === 'console') missing.push('EMAIL_PROVIDER (brevo or resend)');
+  if (config.email.provider === 'brevo' && !config.email.brevoApiKey) missing.push('BREVO_API_KEY');
+  if (config.email.provider === 'resend' && !config.email.resendApiKey) missing.push('RESEND_API_KEY');
+  if (config.email.provider !== 'console' && !config.email.from) missing.push('EMAIL_FROM');
   if (missing.length) throw new Error(`Missing production configuration: ${missing.join(', ')}`);
 }
 

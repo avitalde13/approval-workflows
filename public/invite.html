@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Invitation – Approval Workflows</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="auth-page">
+    <div class="auth-card">
+      <span class="logo"><span class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span> Approval Workflows</span>
+      <h1 id="title">Loading invitation…</h1>
+      <p class="lead" id="lead"></p>
+      <p class="error" id="error" hidden></p>
+      <button class="btn btn-primary btn-block" id="accept" type="button" hidden>Accept invitation</button>
+      <a class="btn btn-primary btn-block" id="signin" hidden>Sign in to accept</a>
+      <a class="btn btn-secondary btn-block" id="home" href="/" hidden style="margin-top:10px">Go to Approval Workflows</a>
+      <p class="fineprint" id="who" hidden></p>
+    </div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const token = location.pathname.split('/').pop();
+    const ROLE = { admin: 'Admin', manager: 'Manager', employee: 'Employee' };
+    const MESSAGES = {
+      expired: 'This invitation has expired. Ask the person who invited you to send a new one.',
+      revoked: 'This invitation is no longer valid. Ask the person who invited you to send a new one.',
+      accepted: 'This invitation was already used.',
+      not_found: 'This invitation link is not valid.',
+    };
+
+    function showError(message) {
+      $('error').textContent = message;
+      $('error').hidden = false;
+    }
+
+    async function main() {
+      const res = await fetch(`/auth/invitations/${encodeURIComponent(token)}`);
+      const inv = await res.json().catch(() => ({ state: 'not_found' }));
+      if (inv.state !== 'pending') {
+        $('title').textContent = 'Invitation unavailable';
+        showError(MESSAGES[inv.state] || MESSAGES.not_found);
+        $('home').hidden = false;
+        return;
+      }
+      $('title').textContent = `Join ${inv.workspace_name}`;
+      $('lead').textContent = `${inv.inviter_name} invited you to join ${inv.workspace_name} as ${ROLE[inv.role] || inv.role}.`;
+
+      const meRes = await fetch('/api/me');
+      if (meRes.status === 401) {
+        $('signin').href = `/?next=${encodeURIComponent(location.pathname)}`;
+        $('signin').hidden = false;
+        $('who').textContent = `Sign in with ${inv.email}.`;
+        $('who').hidden = false;
+        return;
+      }
+      const me = await meRes.json();
+      $('who').textContent = `Signed in as ${me.user.email}.`;
+      $('who').hidden = false;
+      if (me.user.email.toLowerCase() !== inv.email) {
+        showError(`This invitation is for ${inv.email}. Sign out and sign in with that email to accept it.`);
+        return;
+      }
+      $('accept').hidden = false;
+    }
+
+    $('accept').addEventListener('click', async () => {
+      $('accept').disabled = true;
+      $('error').hidden = true;
+      const res = await fetch(`/api/invitations/${encodeURIComponent(token)}/accept`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      }).catch(() => null);
+      const body = res ? await res.json().catch(() => ({})) : {};
+      if (res && res.ok) {
+        try { localStorage.setItem('aw.workspace', String(body.workspace_id)); } catch {}
+        return location.assign('/app');
+      }
+      showError(body.error || 'Something went wrong. Please try again.');
+      $('accept').disabled = false;
+    });
+
+    main().catch(() => showError('Something went wrong. Please refresh the page.'));
+  </script>
+</body>
+</html>

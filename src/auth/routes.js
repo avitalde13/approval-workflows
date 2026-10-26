@@ -14,6 +14,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const redirectUri = () => `${config.appUrl}/auth/google/callback`;
 
+// Where to go after signing in. Only local paths are allowed, so the link can't send people to another site.
+function safeNext(next) {
+  return typeof next === 'string' && /^\/(?![\/\\])[\w\-./?=&%]*$/.test(next) && next.length <= 300 ? next : '/app';
+}
+
 // Finds the user by Google id, or links an existing account with the same (verified) email, or creates one.
 async function upsertGoogleUser(pool, profile) {
   const email = profile.email.toLowerCase();
@@ -49,7 +54,8 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
     const state = crypto.randomBytes(16).toString('base64url');
     const verifier = crypto.randomBytes(32).toString('base64url');
     const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
-    const payload = Buffer.from(JSON.stringify({ state, verifier, t: Date.now() })).toString('base64url');
+    const next = safeNext(req.query.next);
+    const payload = Buffer.from(JSON.stringify({ state, verifier, next, t: Date.now() })).toString('base64url');
     res.cookie(OAUTH_COOKIE, sign(payload, stateSecret), {
       httpOnly: true, secure: req.secure, sameSite: 'lax', maxAge: 10 * 60 * 1000, path: '/auth',
     });
@@ -104,7 +110,7 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
       const userId = await upsertGoogleUser(pool, profile);
       setSessionCookie(req, res, await createSession(pool, userId));
       res.clearCookie(OAUTH_COOKIE, { path: '/auth' });
-      res.redirect('/app');
+      res.redirect(safeNext(saved.next));
     } catch (err) {
       console.error('Google sign-in failed:', err);
       fail('server_error');
@@ -123,7 +129,7 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
         ? existing.rows[0].id
         : (await pool.query('INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id', [email, name])).rows[0].id;
       setSessionCookie(req, res, await createSession(pool, userId));
-      res.json({ ok: true });
+      res.json({ ok: true, next: safeNext(req.body?.next) });
     } catch (err) {
       next(err);
     }
@@ -141,4 +147,4 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
   return router;
 }
 
-module.exports = { authRoutes };
+module.exports = { authRoutes, safeNext };

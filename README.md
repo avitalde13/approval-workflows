@@ -23,8 +23,8 @@ Approval Workflows puts every request in one place, routes it to the right peopl
 |---|---|---|
 | **Authentication** | Sign in with Google (OAuth 2.0 / OpenID Connect) | ✅ Done |
 | **Workspaces** | Every company is an isolated workspace; users can belong to several | ✅ Done |
-| **Invitations** | Invite teammates by email | 🔜 Milestone 2 |
-| **Notifications** | Email alerts when a request needs approval or changes status | 🔜 Milestone 2 |
+| **Invitations** | Admins invite teammates by email with a role; invitees accept with one click | ✅ Done |
+| **Notifications** | Email alerts when a request needs approval or changes status | 🟡 Emails ready, sent once requests exist (Milestone 3) |
 | **Roles** | Admin, Manager and Employee permissions | 🟡 Roles stored, enforcement in Milestone 3 |
 | **Approval chains** | Multi-step approvals (Manager → Finance → VP) | 🔜 Milestone 3 |
 | **Audit log** | Immutable record of every action | 🔜 Milestone 3 |
@@ -39,14 +39,19 @@ Approval Workflows puts every request in one place, routes it to the right peopl
 - [x] Switch between workspaces
 - [x] Automated tests
 
-### Milestone 2: Email
-- [ ] Invite users to a workspace by email
-- [ ] Notification emails for pending approvals and status changes
+### Milestone 2: Email ✅
+- [x] Pluggable email sending: Brevo, Resend, or a local console outbox for development
+- [x] Admins invite people by email with a role (Admin, Manager, Employee)
+- [x] Invite links: single use, expire after 7 days, stored hashed, revocable, re-sendable
+- [x] Invitees open the link, sign in (and come back to the invite automatically) and accept
+- [x] Notification email templates: "approval needed" and "request approved / rejected"
+- [x] Automated tests
 
 ### Milestone 3: Permissions and approvals
 - [ ] Role-based access control (Admin, Manager, Employee)
 - [ ] Request submission (purchase, expense, time off)
 - [ ] Configurable approval chains
+- [ ] Send the approval notification emails at each step
 - [ ] Audit log of every action
 
 ### Milestone 4: AI
@@ -58,6 +63,7 @@ Approval Workflows puts every request in one place, routes it to the right peopl
 - **Backend:** Node.js 20+, Express
 - **Database:** PostgreSQL (migrations in `migrations/`)
 - **Auth:** Google OAuth 2.0 / OpenID Connect, HTTP-only session cookies stored server-side
+- **Email:** Brevo or Resend HTTP APIs (console outbox in development)
 - **Frontend:** Plain HTML, CSS and JavaScript served by Express
 - **Tests:** Node's built-in test runner (`node --test`) against an in-memory Postgres (`pg-mem`)
 
@@ -83,6 +89,8 @@ Open http://localhost:3000.
 
 **Local development without Google:** when `GOOGLE_CLIENT_ID` is not set and `NODE_ENV` is not `production`, the sign-in page offers a **developer login** that lets you sign in with any email. It is disabled in production.
 
+**Emails in local development:** with the default `EMAIL_PROVIDER=console`, nothing is really sent. Emails are printed in the terminal and listed at http://localhost:3000/dev/outbox, so you can click invite links while testing.
+
 ### Google OAuth setup
 
 1. Open [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials).
@@ -100,6 +108,11 @@ Open http://localhost:3000.
 | `GOOGLE_CLIENT_SECRET` | In production | Google OAuth client secret. |
 | `APP_URL` | In production | Public base URL, used to build the OAuth redirect URI. Defaults to `http://localhost:3000`. |
 | `PORT` | No | Port to listen on. Defaults to `3000`. |
+| `EMAIL_PROVIDER` | In production | `brevo` or `resend`. Defaults to `console` (development only). |
+| `EMAIL_FROM` | In production | Sender address (a verified sender in Brevo, or an address on a verified domain in Resend). |
+| `EMAIL_FROM_NAME` | No | Sender name. Defaults to `Approval Workflows`. |
+| `BREVO_API_KEY` | With Brevo | Brevo API key. |
+| `RESEND_API_KEY` | With Resend | Resend API key. |
 
 ### Tests
 
@@ -119,11 +132,12 @@ approval-workflows/
 │   ├── config.js        Environment configuration
 │   ├── db.js            Database pool and migrations
 │   ├── auth/            Google OAuth and sessions
-│   └── routes/          API routes (workspaces, current user)
+│   ├── email/           Email sending (Brevo, Resend, console) and templates
+│   └── routes/          API routes (workspaces, invitations, current user)
 └── test/                Automated tests
 ```
 
-## API (Milestone 1)
+## API
 
 | Method | Path | Description |
 |---|---|---|
@@ -134,6 +148,11 @@ approval-workflows/
 | GET | `/api/me` | Current user and their workspaces |
 | POST | `/api/workspaces` | Create a workspace (`{ name }`); the creator becomes Admin |
 | GET | `/api/workspaces/:id` | Workspace details and members (members only) |
+| GET | `/api/workspaces/:id/invitations` | Pending invitations (Admins only) |
+| POST | `/api/workspaces/:id/invitations` | Invite by email (`{ email, role }`); re-inviting sends a fresh link (Admins only) |
+| DELETE | `/api/workspaces/:id/invitations/:inviteId` | Revoke an invitation (Admins only) |
+| GET | `/auth/invitations/:token` | What an invite link is for (workspace, inviter, role, status) |
+| POST | `/api/invitations/:token/accept` | Join the workspace (signed in with the invited email) |
 
 ## License
 
