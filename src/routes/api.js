@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { requireUser } = require('../auth/sessions');
 const { membershipRole, parseId } = require('../workspaces');
+const { audit } = require('../audit');
 
 const NAME_MIN = 2;
 const NAME_MAX = 80;
@@ -47,6 +48,7 @@ function apiRoutes(pool) {
         [name, slugify(name), req.user.id]
       );
       await client.query("INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1, $2, 'admin')", [rows[0].id, req.user.id]);
+      await audit(client, { workspaceId: rows[0].id, actorId: req.user.id, action: 'workspace.created', entityType: 'workspace', entityId: rows[0].id, details: { name } });
       await client.query('COMMIT');
       res.status(201).json({ ...rows[0], role: 'admin' });
     } catch (err) {
@@ -66,7 +68,7 @@ function apiRoutes(pool) {
       if (!role) return res.status(404).json({ error: 'Workspace not found.' });
       const ws = await pool.query('SELECT id, name, slug, created_at FROM workspaces WHERE id = $1', [id]);
       const members = await pool.query(
-        `SELECT u.id, u.name, u.email, u.avatar_url, m.role, m.created_at AS joined_at
+        `SELECT u.id, u.name, u.email, u.avatar_url, m.role, m.manager_id, m.created_at AS joined_at
            FROM memberships m JOIN users u ON u.id = m.user_id
           WHERE m.workspace_id = $1
           ORDER BY CASE m.role WHEN 'admin' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END, u.name`,

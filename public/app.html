@@ -11,7 +11,7 @@
     <a class="logo" href="/app"><span class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span><span class="hide-sm">Approval Workflows</span></a>
     <div class="topbar-right">
       <select class="ws-select" id="ws-select" aria-label="Current workspace" hidden></select>
-      <button class="btn btn-secondary" id="new-ws" type="button" hidden>New workspace</button>
+      <button class="btn btn-secondary hide-sm" id="new-ws" type="button" hidden>New workspace</button>
       <span class="avatar" id="avatar" title=""></span>
       <button class="btn btn-secondary" id="logout" type="button">Sign out</button>
     </div>
@@ -29,43 +29,88 @@
       <p class="error" id="create-error" style="max-width:460px;margin:14px auto 0" hidden></p>
     </section>
 
-    <!-- Current workspace -->
     <section id="workspace" hidden>
       <div class="page-head">
         <div>
           <h1 id="ws-name"></h1>
           <p>Your role: <span class="role" id="ws-role"></span></p>
         </div>
-      </div>
-      <!-- Admins only -->
-      <div class="card" id="invite-card" style="margin-bottom:20px" hidden>
-        <div class="card-head"><h2>Invite people</h2></div>
-        <form class="invite-form" id="invite-form" novalidate>
-          <input type="email" id="invite-email" placeholder="colleague@company.com" aria-label="Email address" autocomplete="off">
-          <select id="invite-role" aria-label="Role">
-            <option value="employee">Employee</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button class="btn btn-primary" type="submit" id="invite-btn">Send invite</button>
-        </form>
-        <p class="notice" id="invite-msg" hidden></p>
-        <table id="pending-table" hidden>
-          <thead><tr><th>Pending invitation</th><th>Role</th><th class="hide-sm">Expires</th><th></th></tr></thead>
-          <tbody id="pending"></tbody>
-        </table>
+        <button class="btn btn-primary" id="new-request" type="button">New request</button>
       </div>
 
-      <div class="card">
-        <div class="card-head"><h2>Members</h2><span id="member-count" style="color:var(--muted)"></span></div>
-        <table>
-          <thead><tr><th>Person</th><th>Role</th><th class="hide-sm">Joined</th></tr></thead>
-          <tbody id="members"></tbody>
-        </table>
-      </div>
+      <nav class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab active" role="tab" data-tab="requests" type="button">Requests</button>
+        <button class="tab" role="tab" data-tab="members" type="button">Members</button>
+        <button class="tab" role="tab" data-tab="chains" type="button">Approval chains</button>
+        <button class="tab admin-only" role="tab" data-tab="audit" type="button">Audit log</button>
+      </nav>
+
+      <!-- Requests -->
+      <section class="tab-panel" id="tab-requests">
+        <div class="filters" id="scopes">
+          <button class="chip active" data-scope="mine" type="button">My requests</button>
+          <button class="chip" data-scope="to_approve" type="button">To approve <span class="count" id="approve-count" hidden></span></button>
+          <button class="chip manager-only" data-scope="team" type="button">My team</button>
+          <button class="chip admin-only" data-scope="all" type="button">All requests</button>
+        </div>
+        <div class="card">
+          <table class="clickable">
+            <thead><tr><th>Request</th><th class="hide-sm">Type</th><th>Amount / dates</th><th>Status</th><th class="hide-sm">Submitted</th></tr></thead>
+            <tbody id="request-rows"></tbody>
+          </table>
+          <p class="empty-row" id="requests-empty" hidden>Nothing here yet.</p>
+        </div>
+      </section>
+
+      <!-- Members -->
+      <section class="tab-panel" id="tab-members" hidden>
+        <div class="card admin-only" id="invite-card" style="margin-bottom:20px">
+          <div class="card-head"><h2>Invite people</h2></div>
+          <form class="invite-form" id="invite-form" novalidate>
+            <input type="email" id="invite-email" placeholder="colleague@company.com" aria-label="Email address" autocomplete="off">
+            <select id="invite-role" aria-label="Role">
+              <option value="employee">Employee</option>
+              <option value="manager">Manager</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button class="btn btn-primary" type="submit" id="invite-btn">Send invite</button>
+          </form>
+          <p class="notice" id="invite-msg" hidden></p>
+          <table id="pending-table" hidden>
+            <thead><tr><th>Pending invitation</th><th>Role</th><th class="hide-sm">Expires</th><th></th></tr></thead>
+            <tbody id="pending"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Members</h2><span id="member-count" class="muted"></span></div>
+          <p class="notice" id="member-msg" hidden></p>
+          <table>
+            <thead><tr><th>Person</th><th>Role</th><th>Reports to</th><th class="admin-only"></th></tr></thead>
+            <tbody id="members"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Approval chains -->
+      <section class="tab-panel" id="tab-chains" hidden>
+        <p class="muted" style="margin-top:0">Each request goes through these steps in order. "Requester's manager" uses the Reports-to setting on the Members tab; without one, an Admin approves. Nobody approves their own request.</p>
+        <div id="chains"></div>
+      </section>
+
+      <!-- Audit log -->
+      <section class="tab-panel" id="tab-audit" hidden>
+        <div class="card">
+          <table>
+            <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
+            <tbody id="audit-rows"></tbody>
+          </table>
+          <div style="padding:14px 20px" id="audit-more-wrap" hidden><button class="btn btn-secondary" id="audit-more" type="button">Load more</button></div>
+        </div>
+      </section>
     </section>
   </main>
 
+  <!-- New workspace -->
   <dialog class="dialog" id="ws-dialog">
     <form id="dialog-form" novalidate>
       <h2>New workspace</h2>
@@ -75,220 +120,55 @@
       </div>
       <p class="error" id="dialog-error" hidden></p>
       <div class="dialog-actions">
-        <button class="btn btn-secondary" type="button" id="dialog-cancel">Cancel</button>
+        <button class="btn btn-secondary" type="button" data-close>Cancel</button>
         <button class="btn btn-primary" type="submit" id="dialog-btn">Create</button>
       </div>
     </form>
   </dialog>
 
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const STORE_KEY = 'aw.workspace';
-    let me = null;
+  <!-- New request -->
+  <dialog class="dialog dialog-wide" id="request-dialog">
+    <form id="request-form" novalidate>
+      <h2>New request</h2>
+      <div class="field">
+        <label for="rq-type">Type</label>
+        <select id="rq-type">
+          <option value="purchase">Purchase</option>
+          <option value="expense">Expense</option>
+          <option value="time_off">Time off</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="rq-title">Title</label>
+        <input type="text" id="rq-title" maxlength="120" placeholder="New laptop for the design team">
+      </div>
+      <div class="row money">
+        <div class="field grow"><label for="rq-amount">Amount</label><input type="text" inputmode="decimal" id="rq-amount" placeholder="1200.00"></div>
+        <div class="field"><label for="rq-currency">Currency</label>
+          <select id="rq-currency"><option>USD</option><option>EUR</option><option>GBP</option><option>ILS</option></select></div>
+      </div>
+      <div class="field money"><label for="rq-vendor">Vendor <span class="muted" id="vendor-optional">(optional)</span></label><input type="text" id="rq-vendor" maxlength="120" placeholder="Dell"></div>
+      <div class="row dates" hidden>
+        <div class="field grow"><label for="rq-start">First day</label><input type="date" id="rq-start"></div>
+        <div class="field grow"><label for="rq-end">Last day</label><input type="date" id="rq-end"></div>
+      </div>
+      <div class="field">
+        <label for="rq-desc">Details <span class="muted">(optional)</span></label>
+        <textarea id="rq-desc" maxlength="2000" rows="3" placeholder="Why it's needed"></textarea>
+      </div>
+      <p class="error" id="rq-error" hidden></p>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" type="button" data-close>Cancel</button>
+        <button class="btn btn-primary" type="submit" id="rq-btn">Submit for approval</button>
+      </div>
+    </form>
+  </dialog>
 
-    async function api(path, options = {}) {
-      const res = await fetch(path, {
-        ...options,
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-      });
-      if (res.status === 401) { location.assign('/'); throw new Error('Signed out'); }
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again.');
-      return body;
-    }
+  <!-- Request details -->
+  <dialog class="dialog dialog-wide" id="detail-dialog">
+    <div id="detail"></div>
+  </dialog>
 
-    function initials(name) {
-      return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || '?';
-    }
-
-    function avatarEl(user) {
-      const el = document.createElement('span');
-      el.className = 'avatar';
-      if (user.avatar_url) {
-        const img = document.createElement('img');
-        img.src = user.avatar_url;
-        img.alt = '';
-        img.referrerPolicy = 'no-referrer';
-        el.append(img);
-      } else {
-        el.textContent = initials(user.name);
-      }
-      return el;
-    }
-
-    function savedWorkspaceId() {
-      try { return Number(localStorage.getItem(STORE_KEY)) || null; } catch { return null; }
-    }
-    function saveWorkspaceId(id) {
-      try { localStorage.setItem(STORE_KEY, String(id)); } catch {}
-    }
-
-    async function load(selectId) {
-      me = await api('/api/me');
-      const top = $('avatar');
-      top.replaceWith(Object.assign(avatarEl(me.user), { id: 'avatar', title: `${me.user.name} (${me.user.email})` }));
-
-      const hasWs = me.workspaces.length > 0;
-      $('onboarding').hidden = hasWs;
-      $('workspace').hidden = !hasWs;
-      $('ws-select').hidden = !hasWs;
-      $('new-ws').hidden = !hasWs;
-      if (!hasWs) { $('create-name').focus(); return; }
-
-      const wanted = selectId || savedWorkspaceId();
-      const current = me.workspaces.find((w) => w.id === wanted) || me.workspaces[0];
-      $('ws-select').replaceChildren(...me.workspaces.map((w) => new Option(w.name, w.id, false, w.id === current.id)));
-      await showWorkspace(current.id);
-    }
-
-    async function showWorkspace(id) {
-      saveWorkspaceId(id);
-      const ws = await api(`/api/workspaces/${id}`);
-      currentWs = ws;
-      $('invite-card').hidden = ws.role !== 'admin';
-      $('invite-msg').hidden = true;
-      if (ws.role === 'admin') loadInvitations().catch((err) => showInviteMessage(err.message, false));
-      document.title = `${ws.name} – Approval Workflows`;
-      $('ws-name').textContent = ws.name;
-      $('ws-role').textContent = ws.role;
-      $('ws-role').className = `role role-${ws.role}`;
-      $('member-count').textContent = `${ws.members.length} ${ws.members.length === 1 ? 'person' : 'people'}`;
-      const fmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-      $('members').replaceChildren(...ws.members.map((m) => {
-        const tr = document.createElement('tr');
-        const who = document.createElement('td');
-        const person = document.createElement('div');
-        person.className = 'person';
-        const text = document.createElement('div');
-        const name = document.createElement('strong');
-        name.textContent = m.name + (m.id === me.user.id ? ' (you)' : '');
-        const email = document.createElement('small');
-        email.textContent = m.email;
-        text.append(name, email);
-        person.append(avatarEl(m), text);
-        who.append(person);
-        const role = document.createElement('td');
-        const badge = document.createElement('span');
-        badge.className = `role role-${m.role}`;
-        badge.textContent = m.role;
-        role.append(badge);
-        const joined = document.createElement('td');
-        joined.className = 'hide-sm';
-        joined.textContent = fmt.format(new Date(m.joined_at));
-        tr.append(who, role, joined);
-        return tr;
-      }));
-    }
-
-    let currentWs = null;
-
-    function showInviteMessage(text, ok) {
-      $('invite-msg').textContent = text;
-      $('invite-msg').className = ok ? 'notice notice-ok' : 'notice notice-error';
-      $('invite-msg').hidden = false;
-    }
-
-    async function loadInvitations() {
-      const { invitations } = await api(`/api/workspaces/${currentWs.id}/invitations`);
-      $('pending-table').hidden = invitations.length === 0;
-      const fmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
-      $('pending').replaceChildren(...invitations.map((inv) => {
-        const tr = document.createElement('tr');
-        const email = document.createElement('td');
-        email.textContent = inv.email;
-        const role = document.createElement('td');
-        const badge = document.createElement('span');
-        badge.className = `role role-${inv.role}`;
-        badge.textContent = inv.role;
-        role.append(badge);
-        const exp = document.createElement('td');
-        exp.className = 'hide-sm';
-        exp.textContent = fmt.format(new Date(inv.expires_at));
-        const actions = document.createElement('td');
-        actions.style.textAlign = 'right';
-        const resend = Object.assign(document.createElement('button'), { className: 'link-btn', type: 'button', textContent: 'Resend' });
-        resend.addEventListener('click', async () => {
-          resend.disabled = true;
-          try {
-            await api(`/api/workspaces/${currentWs.id}/invitations`, { method: 'POST', body: JSON.stringify({ email: inv.email, role: inv.role }) });
-            showInviteMessage(`New invitation sent to ${inv.email}.`, true);
-            await loadInvitations();
-          } catch (err) { showInviteMessage(err.message, false); resend.disabled = false; }
-        });
-        const revoke = Object.assign(document.createElement('button'), { className: 'link-btn danger', type: 'button', textContent: 'Revoke' });
-        revoke.addEventListener('click', async () => {
-          if (!confirm(`Revoke the invitation for ${inv.email}?`)) return;
-          try {
-            await api(`/api/workspaces/${currentWs.id}/invitations/${inv.id}`, { method: 'DELETE', body: '{}' });
-            showInviteMessage(`Invitation for ${inv.email} revoked.`, true);
-            await loadInvitations();
-          } catch (err) { showInviteMessage(err.message, false); }
-        });
-        actions.append(resend, revoke);
-        tr.append(email, role, exp, actions);
-        return tr;
-      }));
-    }
-
-    $('invite-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = $('invite-email').value.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showInviteMessage('Enter a valid email address.', false);
-      $('invite-btn').disabled = true;
-      try {
-        await api(`/api/workspaces/${currentWs.id}/invitations`, { method: 'POST', body: JSON.stringify({ email, role: $('invite-role').value }) });
-        showInviteMessage(`Invitation sent to ${email}.`, true);
-        $('invite-email').value = '';
-        await loadInvitations();
-      } catch (err) {
-        showInviteMessage(err.message, false);
-      } finally {
-        $('invite-btn').disabled = false;
-      }
-    });
-
-    async function createWorkspace(name, errorEl, btn) {
-      errorEl.hidden = true;
-      if (name.trim().length < 2) {
-        errorEl.textContent = 'Enter a name with at least 2 characters.';
-        errorEl.hidden = false;
-        return false;
-      }
-      btn.disabled = true;
-      try {
-        const ws = await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) });
-        await load(ws.id);
-        return true;
-      } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.hidden = false;
-        return false;
-      } finally {
-        btn.disabled = false;
-      }
-    }
-
-    $('create-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      createWorkspace($('create-name').value, $('create-error'), $('create-btn'));
-    });
-    $('new-ws').addEventListener('click', () => {
-      $('dialog-name').value = '';
-      $('dialog-error').hidden = true;
-      $('ws-dialog').showModal();
-    });
-    $('dialog-cancel').addEventListener('click', () => $('ws-dialog').close());
-    $('dialog-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (await createWorkspace($('dialog-name').value, $('dialog-error'), $('dialog-btn'))) $('ws-dialog').close();
-    });
-    $('ws-select').addEventListener('change', (e) => showWorkspace(Number(e.target.value)));
-    $('logout').addEventListener('click', async () => {
-      await api('/auth/logout', { method: 'POST', body: '{}' }).catch(() => {});
-      location.assign('/');
-    });
-
-    load().catch((err) => console.error(err));
-  </script>
+  <script src="/app.js"></script>
 </body>
 </html>

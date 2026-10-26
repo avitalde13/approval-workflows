@@ -24,10 +24,11 @@ Approval Workflows puts every request in one place, routes it to the right peopl
 | **Authentication** | Sign in with Google (OAuth 2.0 / OpenID Connect) | ✅ Done |
 | **Workspaces** | Every company is an isolated workspace; users can belong to several | ✅ Done |
 | **Invitations** | Admins invite teammates by email with a role; invitees accept with one click | ✅ Done |
-| **Notifications** | Email alerts when a request needs approval or changes status | 🟡 Emails ready, sent once requests exist (Milestone 3) |
-| **Roles** | Admin, Manager and Employee permissions | 🟡 Roles stored, enforcement in Milestone 3 |
-| **Approval chains** | Multi-step approvals (Manager → Finance → VP) | 🔜 Milestone 3 |
-| **Audit log** | Immutable record of every action | 🔜 Milestone 3 |
+| **Notifications** | Email alerts when a request needs approval or changes status | ✅ Done |
+| **Roles** | Admin, Manager and Employee permissions, plus reporting lines (who reports to whom) | ✅ Done |
+| **Requests** | Purchases, expenses and time off, with amounts, vendors or dates | ✅ Done |
+| **Approval chains** | Configurable multi-step approvals (e.g. Manager → Finance → VP), with amount thresholds | ✅ Done |
+| **Audit log** | Append-only record of every action, readable by Admins | ✅ Done |
 | **AI classification** | Auto-categorize requests and flag anomalies (amount, new vendor) | 🔜 Milestone 4 |
 
 ## Roadmap
@@ -47,16 +48,46 @@ Approval Workflows puts every request in one place, routes it to the right peopl
 - [x] Notification email templates: "approval needed" and "request approved / rejected"
 - [x] Automated tests
 
-### Milestone 3: Permissions and approvals
-- [ ] Role-based access control (Admin, Manager, Employee)
-- [ ] Request submission (purchase, expense, time off)
-- [ ] Configurable approval chains
-- [ ] Send the approval notification emails at each step
-- [ ] Audit log of every action
+### Milestone 3: Permissions and approvals ✅
+- [x] Role-based access control (Admin, Manager, Employee) and reporting lines
+- [x] Admins change roles, set who reports to whom, and remove members (never the last Admin)
+- [x] Request submission: purchase, expense, time off
+- [x] Configurable approval chains per request type (up to 5 steps, optional minimum amount per step)
+- [x] Approve or reject (a reason is required to reject); the requester can cancel while pending
+- [x] Approval and status emails at every step
+- [x] Audit log of every action
+- [x] Automated tests
 
 ### Milestone 4: AI
 - [ ] Automatic request classification
 - [ ] Anomaly detection (unusual amount, new vendor, duplicate request)
+
+## How approvals work
+
+1. An **Admin** sets up an approval chain for each request type on the **Approval chains** tab. A step's approver is either *the requester's manager* or a specific person (for example the Finance lead), and a step can apply only above an amount (for example *VP only for $5,000 or more*). Without a configured chain, requests go to the requester's manager.
+2. Any member submits a **request**. The approvers are fixed at that moment, and steps below their minimum amount are skipped.
+3. The current approver gets an **email** and sees the request under **To approve**. They approve or reject (with a reason).
+4. Approving moves the request to the next step and emails the next approver; the last approval completes it. Rejecting stops the chain. The requester is emailed at every step.
+
+Rules:
+- Nobody approves their own request; such steps go to another Admin.
+- If the requester has no manager, the "manager" step goes to an Admin.
+- Only the current approver can decide, and only once.
+- The requester can cancel while the request is pending.
+
+### Who can do what
+
+| | Employee | Manager | Admin |
+|---|:-:|:-:|:-:|
+| Submit requests, see their own, cancel while pending | ✅ | ✅ | ✅ |
+| Approve requests assigned to them | ✅ | ✅ | ✅ |
+| See their direct reports' requests | | ✅ | ✅ |
+| See all requests | | | ✅ |
+| Invite people, change roles and reporting lines, remove members | | | ✅ |
+| Configure approval chains | | | ✅ |
+| Read the audit log | | | ✅ |
+
+Other companies' workspaces always return 404.
 
 ## Tech stack
 
@@ -133,7 +164,10 @@ approval-workflows/
 │   ├── db.js            Database pool and migrations
 │   ├── auth/            Google OAuth and sessions
 │   ├── email/           Email sending (Brevo, Resend, console) and templates
-│   └── routes/          API routes (workspaces, invitations, current user)
+│   ├── routes/          API routes (workspaces, invitations, members, chains, requests, audit log)
+│   ├── permissions.js   Role checks and who may see a request
+│   ├── chains.js        Approval chains and approver resolution
+│   └── audit.js         Append-only audit log
 └── test/                Automated tests
 ```
 
@@ -153,6 +187,16 @@ approval-workflows/
 | DELETE | `/api/workspaces/:id/invitations/:inviteId` | Revoke an invitation (Admins only) |
 | GET | `/auth/invitations/:token` | What an invite link is for (workspace, inviter, role, status) |
 | POST | `/api/invitations/:token/accept` | Join the workspace (signed in with the invited email) |
+| PATCH | `/api/workspaces/:id/members/:userId` | Change `role` and/or `manager_id` (Admins only) |
+| DELETE | `/api/workspaces/:id/members/:userId` | Remove a member (Admins only) |
+| GET | `/api/workspaces/:id/approval-chains` | Approval chains for all request types |
+| PUT | `/api/workspaces/:id/approval-chains/:type` | Replace a chain (`{ steps: [{ name, approver_type, approver_user_id?, min_amount? }] }`, Admins only) |
+| POST | `/api/workspaces/:id/requests` | Submit a request (`type`, `title`, `description?`, `amount`, `currency`, `vendor` or `start_date`/`end_date`) |
+| GET | `/api/workspaces/:id/requests?scope=` | `mine`, `to_approve`, `team` (Managers) or `all` (Admins) |
+| GET | `/api/workspaces/:id/requests/:requestId` | Request details and approval timeline |
+| POST | `/api/workspaces/:id/requests/:requestId/decision` | `{ decision: "approve" \| "reject", comment }` (current approver) |
+| POST | `/api/workspaces/:id/requests/:requestId/cancel` | Cancel (requester, while pending) |
+| GET | `/api/workspaces/:id/audit-log?limit=&before=` | Audit log, newest first (Admins only) |
 
 ## License
 

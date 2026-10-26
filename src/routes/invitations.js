@@ -12,6 +12,7 @@ const { config } = require('../config');
 const { requireUser } = require('../auth/sessions');
 const { membershipRole, parseId } = require('../workspaces');
 const templates = require('../email/templates');
+const { audit } = require('../audit');
 
 const ROLES = ['admin', 'manager', 'employee'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -126,6 +127,10 @@ function invitationRoutes(pool, mailer) {
         await pool.query('UPDATE invitations SET revoked_at = NOW() WHERE id = $1', [rows[0].id]);
         return res.status(502).json({ error: "The invitation email couldn't be sent. Please try again." });
       }
+      await audit(pool, {
+        workspaceId: req.workspaceId, actorId: req.user.id, action: 'invitation.sent', entityType: 'invitation', entityId: rows[0].id,
+        details: { email, role },
+      });
       res.status(201).json({ ...rows[0], invited_by_name: req.user.name });
     } catch (err) {
       next(err);
@@ -140,6 +145,7 @@ function invitationRoutes(pool, mailer) {
         [inviteId, req.workspaceId]
       );
       if (!result.rowCount) return res.status(404).json({ error: 'Invitation not found.' });
+      await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'invitation.revoked', entityType: 'invitation', entityId: inviteId });
       res.json({ ok: true });
     } catch (err) {
       next(err);
@@ -186,6 +192,10 @@ function invitationRoutes(pool, mailer) {
           await client.query('INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1, $2, $3)', [inv.workspace_id, req.user.id, inv.role]);
         }
         await client.query('UPDATE invitations SET accepted_at = NOW(), accepted_by = $1 WHERE id = $2', [req.user.id, inv.id]);
+        await audit(client, {
+          workspaceId: inv.workspace_id, actorId: req.user.id, action: 'member.joined', entityType: 'user', entityId: req.user.id,
+          details: { email: inv.email, role: inv.role, invitation_id: inv.id },
+        });
         await client.query('COMMIT');
       } catch (err) {
         await client.query('ROLLBACK').catch(() => {});

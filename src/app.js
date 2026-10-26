@@ -8,6 +8,10 @@ const { loadSession } = require('./auth/sessions');
 const { authRoutes } = require('./auth/routes');
 const { apiRoutes } = require('./routes/api');
 const { invitationRoutes } = require('./routes/invitations');
+const { memberRoutes } = require('./routes/members');
+const { chainRoutes } = require('./routes/chains');
+const { requestRoutes } = require('./routes/requests');
+const { auditRoutes } = require('./routes/audit');
 const { createMailer } = require('./email/mailer');
 const { escapeHtml } = require('./email/templates');
 
@@ -39,6 +43,10 @@ function createApp({ pool, fetchImpl = fetch, mailer = createMailer(config.email
   app.use('/auth', sameOriginJsonOnly, authRoutes(pool, { fetchImpl, stateSecret }), invites.publicRouter);
   app.use('/api/workspaces/:id/invitations', sameOriginJsonOnly, invites.admin);
   app.use('/api/invitations', sameOriginJsonOnly, invites.accept);
+  app.use('/api/workspaces/:id/members', sameOriginJsonOnly, memberRoutes(pool));
+  app.use('/api/workspaces/:id/approval-chains', sameOriginJsonOnly, chainRoutes(pool));
+  app.use('/api/workspaces/:id/requests', sameOriginJsonOnly, requestRoutes(pool, mailer));
+  app.use('/api/workspaces/:id/audit-log', sameOriginJsonOnly, auditRoutes(pool));
   app.use('/api', sameOriginJsonOnly, apiRoutes(pool));
 
   const page = (file) => (req, res) => res.sendFile(path.join(__dirname, '..', 'public', file));
