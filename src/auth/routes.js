@@ -74,12 +74,13 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
 
   // Step 2: Google sends the user back with a one-time code.
   router.get('/google/callback', async (req, res) => {
-    const fail = (reason) => {
+    const fail = (reason, detail = '') => {
+      console.warn(`Google sign-in failed: ${reason}${detail ? ` (${detail})` : ''}`);
       res.clearCookie(OAUTH_COOKIE, { path: '/auth' });
       res.redirect(`/?error=${encodeURIComponent(reason)}`);
     };
     try {
-      if (req.query.error) return fail('google_denied');
+      if (req.query.error) return fail('google_denied', String(req.query.error).slice(0, 100));
       const raw = unsign(readCookie(req, OAUTH_COOKIE), stateSecret);
       if (!raw) return fail('state_missing');
       const saved = JSON.parse(Buffer.from(raw, 'base64url').toString());
@@ -99,11 +100,15 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
           code_verifier: saved.verifier,
         }),
       });
-      if (!tokenRes.ok) return fail('token_exchange_failed');
+      if (!tokenRes.ok) {
+        // Google's error code only (e.g. invalid_client, redirect_uri_mismatch), never tokens or secrets.
+        const body = await tokenRes.json().catch(() => ({}));
+        return fail('token_exchange_failed', `${tokenRes.status} ${body.error || ''} ${body.error_description || ''}`.trim().slice(0, 200));
+      }
       const { access_token: accessToken } = await tokenRes.json();
 
       const infoRes = await fetchImpl(GOOGLE_USERINFO_URL, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (!infoRes.ok) return fail('profile_failed');
+      if (!infoRes.ok) return fail('profile_failed', String(infoRes.status));
       const profile = await infoRes.json();
       if (!profile.sub || !profile.email || profile.email_verified !== true) return fail('email_not_verified');
 

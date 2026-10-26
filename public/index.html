@@ -44,6 +44,9 @@
       state_mismatch: 'Sign-in could not be verified. Please try again.',
       email_not_verified: 'Your Google email address is not verified.',
       google_not_configured: 'Google sign-in is not configured yet.',
+      token_exchange_failed: "Google sign-in couldn't be completed. The app's Google keys may be wrong.",
+      profile_failed: "Couldn't read your Google profile. Please try again.",
+      server_error: 'Something went wrong on our side. Please try again.',
     };
     const params = new URLSearchParams(location.search);
     const next = params.get('next') || '';

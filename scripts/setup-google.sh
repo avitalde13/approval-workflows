@@ -17,6 +17,12 @@ echo "Paste the Client secret, then press Enter (nothing will appear while you p
 read -s "client_secret?> "
 echo
 client_secret="${client_secret//[[:space:]]/}"
+# Pasting into a hidden prompt is easy to do twice. Google secrets start with GOCSPX-,
+# so keep only the first one if it was pasted more than once.
+if [[ "$client_secret" == GOCSPX-*GOCSPX-* ]]; then
+  client_secret="GOCSPX-${${client_secret#GOCSPX-}%%GOCSPX-*}"
+  echo "(It looks like the secret was pasted more than once; kept one copy.)"
+fi
 if [[ ${#client_secret} -lt 10 ]]; then
   echo "That doesn't look like a client secret. Nothing was saved."
   exit 1
