@@ -5,13 +5,15 @@ const { createPool, migrate } = require('../src/db');
 const { createApp } = require('../src/app');
 const { createMailer } = require('../src/email/mailer');
 
-async function startApp({ fetchImpl, mailer = createMailer({ provider: 'console' }, { log: () => {} }) } = {}) {
+// classifier defaults to null so tests never call the real AI, even if ANTHROPIC_API_KEY is set.
+async function startApp({ fetchImpl, mailer = createMailer({ provider: 'console' }, { log: () => {} }), classifier = null } = {}) {
   const pool = createPool('');
   await migrate(pool);
-  const server = http.createServer(createApp({ pool, fetchImpl, mailer }));
+  const expressApp = createApp({ pool, fetchImpl, mailer, classifier });
+  const server = http.createServer(expressApp);
   await new Promise((resolve) => server.listen(0, resolve));
   const base = `http://localhost:${server.address().port}`;
-  return { pool, base, mailer, close: () => new Promise((resolve) => server.close(resolve)) };
+  return { pool, base, mailer, waitForInsights: expressApp.locals.waitForInsights, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
 // Acts like one browser: remembers cookies between requests, never follows redirects.

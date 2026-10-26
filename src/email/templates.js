@@ -40,15 +40,19 @@ function invitation({ workspaceName, inviterName, role, link, expiresAt }) {
 }
 
 // Sent to the next approver in the chain (wired to requests in Milestone 3).
-function approvalNeeded({ workspaceName, requesterName, requestTitle, amount, currency, link }) {
+function approvalNeeded({ workspaceName, requesterName, requestTitle, amount, currency, link, flags = [] }) {
   const money = amount != null ? ` (${fmtMoney(amount, currency)})` : '';
   const subject = `Approval needed: ${requestTitle}${money}`;
   const text =
     `${requesterName} submitted "${requestTitle}"${money} in ${workspaceName}, and it's waiting for your approval.\n\n` +
+    (flags.length ? `Worth a look:\n${flags.map((f) => `- ${f.message}`).join('\n')}\n\n` : '') +
     `Review it: ${link}`;
   const html = layout({
     heading: 'A request is waiting for your approval',
-    bodyHtml: `<p style="margin:0 0 8px;line-height:1.6"><strong>${escapeHtml(requesterName)}</strong> submitted <strong>${escapeHtml(requestTitle)}</strong>${escapeHtml(money)} in ${escapeHtml(workspaceName)}.</p>`,
+    bodyHtml: `<p style="margin:0 0 8px;line-height:1.6"><strong>${escapeHtml(requesterName)}</strong> submitted <strong>${escapeHtml(requestTitle)}</strong>${escapeHtml(money)} in ${escapeHtml(workspaceName)}.</p>` +
+      (flags.length
+        ? `<div style="margin:8px 0;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;color:#92400e"><strong>Worth a look</strong><ul style="margin:6px 0 0;padding-left:18px">${flags.map((f) => `<li>${escapeHtml(f.message)}</li>`).join('')}</ul></div>`
+        : ''),
     buttonText: 'Review request',
     buttonUrl: link,
     footer: `You're getting this because you're an approver in ${escapeHtml(workspaceName)}.`,

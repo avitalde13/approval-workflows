@@ -5,6 +5,7 @@ const { createApp } = require('./app');
 async function main() {
   assertProductionConfig();
   if (!config.databaseUrl) console.warn('DATABASE_URL not set: using an in-memory database (data resets on restart).');
+  console.log(config.ai.enabled ? `AI classification: on (${config.ai.model})` : 'AI classification: off (set ANTHROPIC_API_KEY to turn it on)');
   if (config.devLoginEnabled) console.warn('Developer login is ON (no GOOGLE_CLIENT_ID). Never use this in production.');
   const pool = createPool();
   await migrate(pool);

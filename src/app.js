@@ -12,6 +12,7 @@ const { memberRoutes } = require('./routes/members');
 const { chainRoutes } = require('./routes/chains');
 const { requestRoutes } = require('./routes/requests');
 const { auditRoutes } = require('./routes/audit');
+const { createClassifier } = require('./insights/ai');
 const { createMailer } = require('./email/mailer');
 const { escapeHtml } = require('./email/templates');
 
@@ -25,8 +26,22 @@ function sameOriginJsonOnly(req, res, next) {
   next();
 }
 
-function createApp({ pool, fetchImpl = fetch, mailer = createMailer(config.email, { fetchImpl }) } = {}) {
+function createApp({
+  pool,
+  fetchImpl = fetch,
+  mailer = createMailer(config.email, { fetchImpl }),
+  classifier = config.ai.enabled ? createClassifier({ model: config.ai.model }) : null,
+} = {}) {
   const app = express();
+
+  // Background AI work. Tests call app.locals.waitForInsights() to wait for it.
+  const pending = new Set();
+  const track = (promise) => {
+    pending.add(promise);
+    promise.finally(() => pending.delete(promise));
+    return promise;
+  };
+  app.locals.waitForInsights = () => Promise.all([...pending]);
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use((req, res, next) => {
@@ -45,7 +60,7 @@ function createApp({ pool, fetchImpl = fetch, mailer = createMailer(config.email
   app.use('/api/invitations', sameOriginJsonOnly, invites.accept);
   app.use('/api/workspaces/:id/members', sameOriginJsonOnly, memberRoutes(pool));
   app.use('/api/workspaces/:id/approval-chains', sameOriginJsonOnly, chainRoutes(pool));
-  app.use('/api/workspaces/:id/requests', sameOriginJsonOnly, requestRoutes(pool, mailer));
+  app.use('/api/workspaces/:id/requests', sameOriginJsonOnly, requestRoutes(pool, mailer, { classifier, track }));
   app.use('/api/workspaces/:id/audit-log', sameOriginJsonOnly, auditRoutes(pool));
   app.use('/api', sameOriginJsonOnly, apiRoutes(pool));
 

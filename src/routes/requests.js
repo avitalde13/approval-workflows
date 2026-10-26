@@ -14,6 +14,8 @@ const { parseId } = require('../workspaces');
 const { REQUEST_TYPES, resolveApprovers, ChainError } = require('../chains');
 const { audit } = require('../audit');
 const templates = require('../email/templates');
+const { runRuleChecks, runAi, getInsight, asArray } = require('../insights');
+const { RANK } = require('../permissions');
 
 const MAX_AMOUNT = 10_000_000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -76,7 +78,8 @@ async function loadApprovals(db, requestId) {
   return rows;
 }
 
-function requestRoutes(pool, mailer) {
+// insights: { classifier: AI classifier or null, track(promise) } (track lets tests wait for background work)
+function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) => p }) {
   const router = express.Router({ mergeParams: true });
   router.use(requireUser, requireMember(pool));
 
@@ -92,10 +95,16 @@ function requestRoutes(pool, mailer) {
   async function notifyApprover(request, approverId) {
     const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [approverId]);
     if (!rows[0]) return;
+    const insight = await getInsight(pool, request.id);
+    const flags = insight ? [...insight.rule_flags, ...insight.ai_flags] : [];
     await notify(rows[0].email, templates.approvalNeeded({
       workspaceName: request.workspace_name, requesterName: request.requester_name, requestTitle: request.title,
-      amount: request.amount, currency: request.currency, link: requestLink(request.workspace_id, request.id),
+      amount: request.amount, currency: request.currency, link: requestLink(request.workspace_id, request.id), flags,
     }));
+  }
+
+  function startAi(requestId) {
+    if (insights.classifier) insights.track(runAi(pool, insights.classifier, requestId));
   }
 
   async function notifyRequester(request, status, actorName, comment) {
@@ -155,10 +164,17 @@ function requestRoutes(pool, mailer) {
       client.release();
     }
 
+    try {
+      await runRuleChecks(pool, requestId, { aiEnabled: Boolean(insights.classifier) });
+    } catch (err) {
+      console.error('Rule checks failed:', err); // never block a submission on insights
+    }
+    startAi(requestId);
     const request = await loadRequest(pool, req.workspaceId, requestId);
     if (firstActive) await notifyApprover(request, firstActive.approver_id);
     else await notifyRequester(request, 'approved', 'Approval Workflows');
-    res.status(201).json({ ...request, approvals: await loadApprovals(pool, requestId) });
+    const { requester_email: _hidden, ...created } = request;
+    res.status(201).json({ ...created, approvals: await loadApprovals(pool, requestId), insight: await getInsight(pool, requestId) });
   });
 
   // ---------- List ----------
@@ -167,9 +183,11 @@ function requestRoutes(pool, mailer) {
     const select = `
       SELECT r.id, r.type, r.title, r.amount, r.currency, r.vendor, r.start_date, r.end_date, r.status, r.created_at, r.decided_at,
              r.requester_id, u.name AS requester_name,
-             cur.step_name AS current_step, cu.name AS current_approver
+             cur.step_name AS current_step, cu.name AS current_approver,
+             ri.risk_level, ri.category, ri.rule_flags, ri.ai_flags
         FROM requests r
         JOIN users u ON u.id = r.requester_id
+        LEFT JOIN request_insights ri ON ri.request_id = r.id
         LEFT JOIN request_approvals cur ON cur.request_id = r.id AND cur.status = 'pending'
         LEFT JOIN users cu ON cu.id = cur.approver_id`;
     const order = ' ORDER BY r.created_at DESC, r.id DESC LIMIT 200';
@@ -195,7 +213,15 @@ function requestRoutes(pool, mailer) {
       } else {
         return res.status(400).json({ error: 'scope must be mine, to_approve, team or all.' });
       }
-      res.json({ requests: result.rows.map(shape) });
+      // Risk details are for approvers and up: requesters see their own list without them.
+      const hideRisk = scope === 'mine' && req.role === 'employee';
+      res.json({
+        requests: result.rows.map(({ rule_flags: rf, ai_flags: af, ...r }) => ({
+          ...shape(r),
+          risk_level: hideRisk ? null : r.risk_level,
+          flag_count: hideRisk ? 0 : asArray(rf).length + asArray(af).length,
+        })),
+      });
     } catch (err) {
       next(err);
     }
@@ -211,8 +237,11 @@ function requestRoutes(pool, mailer) {
       const approvals = await loadApprovals(pool, request.id);
       const current = approvals.find((a) => a.status === 'pending');
       const { requester_email: _hidden, ...publicRequest } = request;
+      // Insights help reviewers; a requester who isn't also an approver, manager or Admin doesn't see them.
+      const isReviewer = req.role === 'admin' || approvals.some((a) => a.approver_id === req.user.id) || request.requester_id !== req.user.id;
       res.json({
         ...publicRequest,
+        insight: isReviewer ? await getInsight(pool, request.id) : null,
         type_label: TYPE_LABEL[request.type],
         approvals,
         can_decide: request.status === 'pending' && current?.approver_id === req.user.id,
@@ -292,6 +321,23 @@ function requestRoutes(pool, mailer) {
       }
       const updated = await loadRequest(pool, req.workspaceId, request.id);
       res.json({ ...updated, requester_email: undefined, approvals: await loadApprovals(pool, request.id) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---------- Re-run AI (Admins) ----------
+  router.post('/:requestId/reanalyze', async (req, res, next) => {
+    try {
+      if (req.role !== 'admin') return res.status(403).json({ error: 'Only workspace Admins can do this.' });
+      if (!insights.classifier) return res.status(409).json({ error: 'AI classification is not set up (ANTHROPIC_API_KEY).' });
+      const request = await loadRequest(pool, req.workspaceId, parseId(req.params.requestId));
+      if (!request) return res.status(404).json({ error: 'Request not found.' });
+      const existing = await getInsight(pool, request.id);
+      if (!existing) await runRuleChecks(pool, request.id, { aiEnabled: true });
+      else await pool.query("UPDATE request_insights SET ai_status = 'pending', ai_error = NULL WHERE request_id = $1", [request.id]);
+      startAi(request.id);
+      res.status(202).json({ ok: true });
     } catch (err) {
       next(err);
     }

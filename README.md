@@ -29,7 +29,8 @@ Approval Workflows puts every request in one place, routes it to the right peopl
 | **Requests** | Purchases, expenses and time off, with amounts, vendors or dates | ✅ Done |
 | **Approval chains** | Configurable multi-step approvals (e.g. Manager → Finance → VP), with amount thresholds | ✅ Done |
 | **Audit log** | Append-only record of every action, readable by Admins | ✅ Done |
-| **AI classification** | Auto-categorize requests and flag anomalies (amount, new vendor) | 🔜 Milestone 4 |
+| **Anomaly checks** | Rule-based flags: unusual amounts, new vendors, duplicates, amounts just under a limit, split purchases, overlapping time off | ✅ Done |
+| **AI classification** | Claude categorizes each request, rates its risk and explains concerns (optional) | ✅ Done |
 
 ## Roadmap
 
@@ -58,9 +59,13 @@ Approval Workflows puts every request in one place, routes it to the right peopl
 - [x] Audit log of every action
 - [x] Automated tests
 
-### Milestone 4: AI
-- [ ] Automatic request classification
-- [ ] Anomaly detection (unusual amount, new vendor, duplicate request)
+### Milestone 4: AI ✅
+- [x] Rule-based anomaly checks on every request (no AI needed)
+- [x] AI classification with Claude: category, risk level, one-line summary, judgment flags
+- [x] Risk and flags shown to approvers (request page, approval email, list badges)
+- [x] AI runs in the background and can never lower a risk the rules found
+- [x] Admins can re-run the AI for a request
+- [x] Automated tests (with a fake Claude client)
 
 ## How approvals work
 
@@ -89,12 +94,39 @@ Rules:
 
 Other companies' workspaces always return 404.
 
+## Risk checks and AI
+
+Every request gets a **risk level** (low, medium, high) and a list of **flags** that approvers see on the request page, in the approval email ("Worth a look") and as a badge in their list. Requesters don't see the risk on their own requests.
+
+**Rule checks** (always on, instant, no AI):
+
+| Flag | When |
+|---|---|
+| `amount_unusual_for_requester` | More than 3× the person's median for that request type (needs 3+ past requests) |
+| `amount_unusual_for_company` | More than 1.5× the company's 95th percentile for that type (needs 10+ past requests) |
+| `new_vendor` | First request with this vendor in the workspace |
+| `possible_duplicate` | Same person, same amount and same title or vendor within 30 days |
+| `just_below_threshold` | Within 5% below an approval step's minimum amount |
+| `possible_split` | Same person and vendor within 7 days, each under a limit, together over it |
+| `overlapping_time_off` / `long_time_off` | Overlaps another pending/approved time off, or longer than 21 days |
+
+**AI classification** (optional, Claude): after a request is submitted, Claude reads it in the background and returns a category (Software & subscriptions, Travel, Hardware & equipment, …), a risk level, a one-line summary for the approver, and judgment flags such as *vague justification* or *possible personal use*. It uses structured JSON output (`output_config.format`), so the answer always matches a fixed schema, at low effort to keep cost and latency down.
+
+Safeguards:
+- **Turned on by** setting `ANTHROPIC_API_KEY`. Without it, only the rule checks run.
+- **AI can raise the risk, never lower it.** The final risk is the highest of the rule flags and the AI's view.
+- **Request text is treated as data.** It's sent inside a `<request>` block, and the system prompt tells the model to ignore instructions in it and flag attempts to influence the review.
+- **Failures never block a request.** If the AI is unavailable, declines, or returns something invalid, the request goes through with its rule checks, and the panel says "AI review unavailable". Admins can **Re-run AI** later.
+- **Refusal fallback** (`fallbacks: "default"`) is on: if the model declines, the API retries on another model in the same call.
+- **What's sent to Anthropic:** type, title, description, amount, currency, vendor, dates, the requester's role and number of past requests, and the rule flags. No names or emails.
+
 ## Tech stack
 
 - **Backend:** Node.js 20+, Express
 - **Database:** PostgreSQL (migrations in `migrations/`)
 - **Auth:** Google OAuth 2.0 / OpenID Connect, HTTP-only session cookies stored server-side
 - **Email:** Brevo or Resend HTTP APIs (console outbox in development)
+- **AI:** Claude via the official `@anthropic-ai/sdk` (model `claude-opus-5-5`, structured outputs)
 - **Frontend:** Plain HTML, CSS and JavaScript served by Express
 - **Tests:** Node's built-in test runner (`node --test`) against an in-memory Postgres (`pg-mem`)
 
@@ -144,6 +176,9 @@ Open http://localhost:3000.
 | `EMAIL_FROM_NAME` | No | Sender name. Defaults to `Approval Workflows`. |
 | `BREVO_API_KEY` | With Brevo | Brevo API key. |
 | `RESEND_API_KEY` | With Resend | Resend API key. |
+| `ANTHROPIC_API_KEY` | For AI | Turns on AI classification. Without it, only the rule checks run. |
+| `AI_ENABLED` | No | `false` turns AI off even with a key; `true` turns it on with other Anthropic credentials. |
+| `AI_MODEL` | No | Claude model for classification. Defaults to `claude-opus-5-5`. |
 
 ### Tests
 
@@ -166,6 +201,7 @@ approval-workflows/
 │   ├── email/           Email sending (Brevo, Resend, console) and templates
 │   ├── routes/          API routes (workspaces, invitations, members, chains, requests, audit log)
 │   ├── permissions.js   Role checks and who may see a request
+│   ├── insights/        Rule-based anomaly checks and AI classification
 │   ├── chains.js        Approval chains and approver resolution
 │   └── audit.js         Append-only audit log
 └── test/                Automated tests
@@ -196,6 +232,7 @@ approval-workflows/
 | GET | `/api/workspaces/:id/requests/:requestId` | Request details and approval timeline |
 | POST | `/api/workspaces/:id/requests/:requestId/decision` | `{ decision: "approve" \| "reject", comment }` (current approver) |
 | POST | `/api/workspaces/:id/requests/:requestId/cancel` | Cancel (requester, while pending) |
+| POST | `/api/workspaces/:id/requests/:requestId/reanalyze` | Re-run the AI for a request (Admins only) |
 | GET | `/api/workspaces/:id/audit-log?limit=&before=` | Audit log, newest first (Admins only) |
 
 ## License

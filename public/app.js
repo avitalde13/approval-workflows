@@ -135,7 +135,7 @@ async function loadRequests() {
     h('td', {}, h('strong', {}, r.title), h('small', { class: 'sub' }, scope === 'mine' ? (r.current_step ? `Waiting for ${r.current_approver} (${r.current_step})` : '') : r.requester_name)),
     h('td', { class: 'hide-sm' }, TYPE_LABEL[r.type]),
     h('td', {}, amountOrDates(r)),
-    h('td', {}, badge(`st-${r.status}`, STATUS_LABEL[r.status])),
+    h('td', {}, badge(`st-${r.status}`, STATUS_LABEL[r.status]), r.risk_level && r.risk_level !== 'low' ? h('span', { class: `risk risk-${r.risk_level}`, title: `${r.flag_count} flag(s)` }, r.risk_level === 'high' ? 'High risk' : 'Check') : ''),
     h('td', { class: 'hide-sm' }, dateFmt.format(new Date(r.created_at))),
   )));
 }
@@ -181,6 +181,7 @@ async function openRequest(id) {
     h('div', { class: 'detail-head' }, h('h2', {}, r.title), badge(`st-${r.status}`, STATUS_LABEL[r.status])),
     h('dl', { class: 'facts' }, ...facts.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
     r.description && h('p', { class: 'desc' }, r.description),
+    insightPanel(r),
     h('h3', { class: 'timeline-title' }, 'Approvals'),
     h('ol', { class: 'timeline' }, ...r.approvals.map((a) => h('li', { class: `step step-${a.status}` },
       h('span', { class: 'dot' }),
@@ -199,6 +200,32 @@ async function openRequest(id) {
       h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => $('detail-dialog').close() }, 'Close')),
   ].filter(Boolean));
   $('detail-dialog').showModal();
+}
+
+const RISK_LABEL = { low: 'Low risk', medium: 'Worth a look', high: 'High risk' };
+function insightPanel(r) {
+  const i = r.insight;
+  if (!i) return null;
+  const flags = [...i.rule_flags.map((f) => ({ ...f, source: 'Check' })), ...i.ai_flags.map((f) => ({ ...f, source: 'AI' }))];
+  const aiLine = {
+    done: i.summary,
+    pending: 'AI review in progress…',
+    failed: `AI review unavailable${i.ai_error ? ` (${i.ai_error})` : ''}.`,
+    off: null,
+  }[i.ai_status];
+  return h('section', { class: `insight insight-${i.risk_level}` },
+    h('div', { class: 'insight-head' },
+      h('span', { class: `risk risk-${i.risk_level}` }, RISK_LABEL[i.risk_level]),
+      i.category && h('span', { class: 'category' }, i.category),
+      ws.role === 'admin' && i.ai_status !== 'off' && h('button', { class: 'link-btn', type: 'button', onclick: async (e) => {
+        e.target.disabled = true;
+        try { await post(`/api/workspaces/${ws.id}/requests/${r.id}/reanalyze`); setTimeout(() => openRequest(r.id), 1500); }
+        catch (err) { alert(err.message); e.target.disabled = false; }
+      } }, 'Re-run AI')),
+    aiLine && h('p', { class: 'insight-summary' }, aiLine),
+    flags.length
+      ? h('ul', { class: 'flags' }, ...flags.map((f) => h('li', { class: `flag flag-${f.severity}` }, h('span', { class: 'flag-src' }, f.source), f.message)))
+      : h('p', { class: 'muted', style: 'margin:0' }, 'No anomalies found.'));
 }
 
 // New request form

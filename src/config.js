@@ -14,6 +14,11 @@ const config = {
   },
   sessionDays: 30,
   inviteDays: 7,
+  // AI classification (Milestone 4). On when ANTHROPIC_API_KEY is set or AI_ENABLED=true; AI_ENABLED=false turns it off.
+  ai: {
+    enabled: process.env.AI_ENABLED === 'true' || (Boolean(process.env.ANTHROPIC_API_KEY) && process.env.AI_ENABLED !== 'false'),
+    model: process.env.AI_MODEL || 'claude-opus-5-5',
+  },
   email: {
     // "console" (development: emails are printed and kept in /dev/outbox), "brevo" or "resend".
     provider: (process.env.EMAIL_PROVIDER || 'console').toLowerCase(),

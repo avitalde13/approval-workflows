@@ -155,3 +155,24 @@ input[type="date"] { width: 100%; font: inherit; font-size: 16px; padding: 9px 1
   .step-head { display: none; }
   .page-head .btn { width: 100%; }
 }
+
+/* Milestone 4: risk and insights */
+.risk { display: inline-block; margin-left: 6px; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.risk-low { background: var(--ok-bg); color: var(--ok); }
+.risk-medium { background: #fef3c7; color: #92400e; }
+.risk-high { background: var(--danger-bg); color: var(--danger); }
+@media (prefers-color-scheme: dark) { .risk-medium { background: #3a2a05; color: #fcd34d; } }
+.insight { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 12px 0; }
+.insight-high { border-color: #fca5a5; }
+.insight-medium { border-color: #fcd34d; }
+.insight-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.insight-head .risk { margin-left: 0; }
+.insight-head .link-btn { margin-left: auto; }
+.category { font-size: 13px; font-weight: 600; color: var(--muted); }
+.insight-summary { margin: 8px 0; }
+.flags { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.flag { font-size: 14px; display: flex; gap: 8px; align-items: baseline; }
+.flag::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; transform: translateY(-1px); background: #f59e0b; }
+.flag-high::before { background: #ef4444; }
+.flag-low::before { background: var(--border); }
+.flag-src { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
