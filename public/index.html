@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in – Approval Workflows</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="auth-page">
+    <div class="auth-card">
+      <span class="logo"><span class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span> Approval Workflows</span>
+      <h1>Sign in</h1>
+      <p class="lead">Requests, approvals and audit trails for your whole company.</p>
+
+      <p class="error" id="error" hidden></p>
+
+      <a class="btn btn-secondary btn-block btn-google" id="google" href="/auth/google" hidden>
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6C12.4 13.7 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.1 5.3-4.6 7l7.1 5.5c4.2-3.9 7.2-9.6 7.2-17z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.3.8-4.7l-7.8-6C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.4-4.6 2.2-8.8 2.2-6.3 0-11.6-4.2-13.5-9.9l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>
+        Continue with Google
+      </a>
+
+      <form id="dev" hidden novalidate>
+        <div class="divider" id="dev-divider" hidden>or</div>
+        <div class="field">
+          <label for="dev-email">Email (developer login)</label>
+          <input type="email" id="dev-email" autocomplete="email" placeholder="you@company.com">
+        </div>
+        <div class="field">
+          <label for="dev-name">Name</label>
+          <input type="text" id="dev-name" autocomplete="name" placeholder="Your name">
+        </div>
+        <button class="btn btn-primary btn-block" type="submit" id="dev-btn">Sign in</button>
+        <p class="fineprint">Developer login is for local development only. It turns off once Google sign-in is configured.</p>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    const ERRORS = {
+      google_denied: 'Google sign-in was cancelled.',
+      state_missing: 'Your sign-in session expired. Please try again.',
+      state_expired: 'Your sign-in session expired. Please try again.',
+      state_mismatch: 'Sign-in could not be verified. Please try again.',
+      email_not_verified: 'Your Google email address is not verified.',
+      google_not_configured: 'Google sign-in is not configured yet.',
+    };
+    const err = new URLSearchParams(location.search).get('error');
+    if (err) {
+      document.getElementById('error').textContent = ERRORS[err] || 'Sign-in failed. Please try again.';
+      document.getElementById('error').hidden = false;
+    }
+
+    fetch('/auth/config').then((r) => r.json()).then(({ google, devLogin }) => {
+      document.getElementById('google').hidden = !google;
+      document.getElementById('dev').hidden = !devLogin;
+      document.getElementById('dev-divider').hidden = !(google && devLogin);
+    });
+
+    document.getElementById('dev').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('dev-btn');
+      btn.disabled = true;
+      const res = await fetch('/auth/dev-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: document.getElementById('dev-email').value, name: document.getElementById('dev-name').value }),
+      }).catch(() => null);
+      if (res && res.ok) return location.assign('/app');
+      const body = res ? await res.json().catch(() => ({})) : {};
+      document.getElementById('error').textContent = body.error || 'Sign-in failed. Please try again.';
+      document.getElementById('error').hidden = false;
+      btn.disabled = false;
+    });
+  </script>
+</body>
+</html>

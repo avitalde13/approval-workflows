@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Approval Workflows</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="logo" href="/app"><span class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span><span class="hide-sm">Approval Workflows</span></a>
+    <div class="topbar-right">
+      <select class="ws-select" id="ws-select" aria-label="Current workspace" hidden></select>
+      <button class="btn btn-secondary" id="new-ws" type="button" hidden>New workspace</button>
+      <span class="avatar" id="avatar" title=""></span>
+      <button class="btn btn-secondary" id="logout" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- No workspace yet -->
+    <section class="card empty-state" id="onboarding" hidden>
+      <h1>Create your company's workspace</h1>
+      <p>A workspace holds your company's people, requests and approvals. You'll be its Admin.</p>
+      <form class="inline-form" id="create-form" novalidate>
+        <input type="text" id="create-name" maxlength="80" placeholder="Acme Inc." aria-label="Workspace name">
+        <button class="btn btn-primary" type="submit" id="create-btn">Create workspace</button>
+      </form>
+      <p class="error" id="create-error" style="max-width:460px;margin:14px auto 0" hidden></p>
+    </section>
+
+    <!-- Current workspace -->
+    <section id="workspace" hidden>
+      <div class="page-head">
+        <div>
+          <h1 id="ws-name"></h1>
+          <p>Your role: <span class="role" id="ws-role"></span></p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Members</h2><span id="member-count" style="color:var(--muted)"></span></div>
+        <table>
+          <thead><tr><th>Person</th><th>Role</th><th class="hide-sm">Joined</th></tr></thead>
+          <tbody id="members"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="dialog" id="ws-dialog">
+    <form id="dialog-form" novalidate>
+      <h2>New workspace</h2>
+      <div class="field">
+        <label for="dialog-name">Company or team name</label>
+        <input type="text" id="dialog-name" maxlength="80" placeholder="Acme Inc.">
+      </div>
+      <p class="error" id="dialog-error" hidden></p>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" type="button" id="dialog-cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit" id="dialog-btn">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const STORE_KEY = 'aw.workspace';
+    let me = null;
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      });
+      if (res.status === 401) { location.assign('/'); throw new Error('Signed out'); }
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again.');
+      return body;
+    }
+
+    function initials(name) {
+      return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || '?';
+    }
+
+    function avatarEl(user) {
+      const el = document.createElement('span');
+      el.className = 'avatar';
+      if (user.avatar_url) {
+        const img = document.createElement('img');
+        img.src = user.avatar_url;
+        img.alt = '';
+        img.referrerPolicy = 'no-referrer';
+        el.append(img);
+      } else {
+        el.textContent = initials(user.name);
+      }
+      return el;
+    }
+
+    function savedWorkspaceId() {
+      try { return Number(localStorage.getItem(STORE_KEY)) || null; } catch { return null; }
+    }
+    function saveWorkspaceId(id) {
+      try { localStorage.setItem(STORE_KEY, String(id)); } catch {}
+    }
+
+    async function load(selectId) {
+      me = await api('/api/me');
+      const top = $('avatar');
+      top.replaceWith(Object.assign(avatarEl(me.user), { id: 'avatar', title: `${me.user.name} (${me.user.email})` }));
+
+      const hasWs = me.workspaces.length > 0;
+      $('onboarding').hidden = hasWs;
+      $('workspace').hidden = !hasWs;
+      $('ws-select').hidden = !hasWs;
+      $('new-ws').hidden = !hasWs;
+      if (!hasWs) { $('create-name').focus(); return; }
+
+      const wanted = selectId || savedWorkspaceId();
+      const current = me.workspaces.find((w) => w.id === wanted) || me.workspaces[0];
+      $('ws-select').replaceChildren(...me.workspaces.map((w) => new Option(w.name, w.id, false, w.id === current.id)));
+      await showWorkspace(current.id);
+    }
+
+    async function showWorkspace(id) {
+      saveWorkspaceId(id);
+      const ws = await api(`/api/workspaces/${id}`);
+      document.title = `${ws.name} – Approval Workflows`;
+      $('ws-name').textContent = ws.name;
+      $('ws-role').textContent = ws.role;
+      $('ws-role').className = `role role-${ws.role}`;
+      $('member-count').textContent = `${ws.members.length} ${ws.members.length === 1 ? 'person' : 'people'}`;
+      const fmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+      $('members').replaceChildren(...ws.members.map((m) => {
+        const tr = document.createElement('tr');
+        const who = document.createElement('td');
+        const person = document.createElement('div');
+        person.className = 'person';
+        const text = document.createElement('div');
+        const name = document.createElement('strong');
+        name.textContent = m.name + (m.id === me.user.id ? ' (you)' : '');
+        const email = document.createElement('small');
+        email.textContent = m.email;
+        text.append(name, email);
+        person.append(avatarEl(m), text);
+        who.append(person);
+        const role = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `role role-${m.role}`;
+        badge.textContent = m.role;
+        role.append(badge);
+        const joined = document.createElement('td');
+        joined.className = 'hide-sm';
+        joined.textContent = fmt.format(new Date(m.joined_at));
+        tr.append(who, role, joined);
+        return tr;
+      }));
+    }
+
+    async function createWorkspace(name, errorEl, btn) {
+      errorEl.hidden = true;
+      if (name.trim().length < 2) {
+        errorEl.textContent = 'Enter a name with at least 2 characters.';
+        errorEl.hidden = false;
+        return false;
+      }
+      btn.disabled = true;
+      try {
+        const ws = await api('/api/workspaces', { method: 'POST', body: JSON.stringify({ name }) });
+        await load(ws.id);
+        return true;
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.hidden = false;
+        return false;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    $('create-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      createWorkspace($('create-name').value, $('create-error'), $('create-btn'));
+    });
+    $('new-ws').addEventListener('click', () => {
+      $('dialog-name').value = '';
+      $('dialog-error').hidden = true;
+      $('ws-dialog').showModal();
+    });
+    $('dialog-cancel').addEventListener('click', () => $('ws-dialog').close());
+    $('dialog-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (await createWorkspace($('dialog-name').value, $('dialog-error'), $('dialog-btn'))) $('ws-dialog').close();
+    });
+    $('ws-select').addEventListener('change', (e) => showWorkspace(Number(e.target.value)));
+    $('logout').addEventListener('click', async () => {
+      await api('/auth/logout', { method: 'POST', body: '{}' }).catch(() => {});
+      location.assign('/');
+    });
+
+    load().catch((err) => console.error(err));
+  </script>
+</body>
+</html>
