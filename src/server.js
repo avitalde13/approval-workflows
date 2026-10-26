@@ -1,3 +1,4 @@
+require('./env').loadEnvFile(); // before config is read
 const { config, assertProductionConfig } = require('./config');
 const { createPool, migrate } = require('./db');
 const { createApp } = require('./app');

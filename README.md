@@ -156,10 +156,17 @@ Open http://localhost:3000.
 
 ### Google OAuth setup
 
-1. Open [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials).
-2. Create an **OAuth client ID** of type **Web application**.
-3. Add the authorized redirect URI: `http://localhost:3000/auth/google/callback` (and your production URL's `/auth/google/callback`).
-4. Copy the client ID and secret into `.env`.
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project (for example *Approval Workflows*).
+2. Open **Google Auth Platform → Branding** (the OAuth consent screen) and fill in the app name and support email. Under **Audience**, choose **External** and add your Google account as a **test user**. While the app is in *Testing*, only test users can sign in.
+3. Open **Clients → Create client**, choose **Web application**, and add:
+   - Authorized JavaScript origin: `http://localhost:3000`
+   - Authorized redirect URI: `http://localhost:3000/auth/google/callback`
+
+   For production, add your public URL and its `/auth/google/callback` too, and set `APP_URL` to match.
+4. Run `./scripts/setup-google.sh` and paste the Client ID and Client secret. It writes them to `.env` (ignored by git), hiding the secret, and adds `APP_URL` and a random `SESSION_SECRET`.
+5. Run `npm run dev` and click **Continue with Google**. The developer login turns off automatically once Google is configured.
+
+The app reads `.env` on startup by itself, so this works on any Node version (variables already set in your shell win).
 
 ### Environment variables
 
