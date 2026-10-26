@@ -4,19 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Invitation – Approval Workflows</title>
+  <title>Invitation – Greenlight</title>
+  <link rel="icon" href="/img/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main class="auth-page">
     <div class="auth-card">
-      <span class="logo"><span class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span> Approval Workflows</span>
+      <span class="logo"><span class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></span> Greenlight</span>
       <h1 id="title">Loading invitation…</h1>
       <p class="lead" id="lead"></p>
       <p class="error" id="error" hidden></p>
       <button class="btn btn-primary btn-block" id="accept" type="button" hidden>Accept invitation</button>
       <a class="btn btn-primary btn-block" id="signin" hidden>Sign in to accept</a>
-      <a class="btn btn-secondary btn-block" id="home" href="/" hidden style="margin-top:10px">Go to Approval Workflows</a>
+      <a class="btn btn-secondary btn-block" id="home" href="/" hidden style="margin-top:10px">Go to Greenlight</a>
       <p class="fineprint" id="who" hidden></p>
     </div>
   </main>
@@ -50,7 +51,7 @@
 
       const meRes = await fetch('/api/me');
       if (meRes.status === 401) {
-        $('signin').href = `/?next=${encodeURIComponent(location.pathname)}`;
+        $('signin').href = `/signin?next=${encodeURIComponent(location.pathname)}`;
         $('signin').hidden = false;
         $('who').textContent = `Sign in with ${inv.email}.`;
         $('who').hidden = false;

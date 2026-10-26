@@ -13,9 +13,9 @@ function layout({ heading, bodyHtml, buttonText, buttonUrl, footer }) {
 <html><body style="margin:0;padding:24px;background:#f6f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111827">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center">
     <table role="presentation" width="560" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px">
-      <tr><td style="padding:28px 32px 8px;font-weight:700;font-size:15px;color:#4f46e5">Approval Workflows</td></tr>
+      <tr><td style="padding:28px 32px 8px;font-weight:700;font-size:15px;color:#059669">Greenlight</td></tr>
       <tr><td style="padding:0 32px"><h1 style="font-size:20px;margin:8px 0 12px">${heading}</h1>${bodyHtml}</td></tr>
-      <tr><td style="padding:16px 32px 8px"><a href="${escapeHtml(buttonUrl)}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px">${buttonText}</a></td></tr>
+      <tr><td style="padding:16px 32px 8px"><a href="${escapeHtml(buttonUrl)}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px">${buttonText}</a></td></tr>
       <tr><td style="padding:8px 32px 28px;font-size:13px;color:#6b7280">${footer}</td></tr>
     </table>
   </td></tr></table>
@@ -24,7 +24,7 @@ function layout({ heading, bodyHtml, buttonText, buttonUrl, footer }) {
 
 function invitation({ workspaceName, inviterName, role, link, expiresAt }) {
   const roleLabel = ROLE_LABEL[role] || role;
-  const subject = `${inviterName} invited you to ${workspaceName} on Approval Workflows`;
+  const subject = `${inviterName} invited you to ${workspaceName} on Greenlight`;
   const text =
     `${inviterName} invited you to join ${workspaceName} as ${roleLabel}.\n\n` +
     `Accept the invitation: ${link}\n\n` +

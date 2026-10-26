@@ -24,7 +24,7 @@ const config = {
     // (no emails; Admins copy invite links themselves). Production defaults to "none".
     provider: (process.env.EMAIL_PROVIDER || (isProduction ? 'none' : 'console')).toLowerCase(),
     from: process.env.EMAIL_FROM || '',
-    fromName: process.env.EMAIL_FROM_NAME || 'Approval Workflows',
+    fromName: process.env.EMAIL_FROM_NAME || 'Greenlight',
     brevoApiKey: process.env.BREVO_API_KEY || '',
     resendApiKey: process.env.RESEND_API_KEY || '',
   },

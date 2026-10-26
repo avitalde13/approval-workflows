@@ -1,4 +1,4 @@
-// Approval Workflows: the signed-in app (requests, members, approval chains, audit log).
+// Greenlight: the signed-in app (requests, members, approval chains, audit log).
 // All user-provided text is inserted with textContent (via h()), never as HTML.
 
 const $ = (id) => document.getElementById(id);
@@ -30,7 +30,7 @@ function h(tag, props = {}, ...children) {
 
 async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } });
-  if (res.status === 401) { location.assign('/'); throw new Error('Signed out'); }
+  if (res.status === 401) { location.assign('/signin'); throw new Error('Signed out'); }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || 'Something went wrong. Please try again.');
   return body;
@@ -98,7 +98,7 @@ async function load(selectId) {
 async function showWorkspace(id) {
   saveWorkspaceId(id);
   ws = await api(`/api/workspaces/${id}`);
-  document.title = `${ws.name} – Approval Workflows`;
+  document.title = `${ws.name} – Greenlight`;
   $('ws-name').textContent = ws.name;
   $('ws-role').textContent = ws.role;
   $('ws-role').className = `role role-${ws.role}`;

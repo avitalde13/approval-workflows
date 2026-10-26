@@ -17,12 +17,15 @@ test('API requires sign-in', async () => {
   assert.equal(res.status, 401);
 });
 
-test('signed-out visitors see the sign-in page; /app redirects to it', async () => {
+test('signed-out visitors see the landing and sign-in pages; /app redirects to sign-in', async () => {
   const c = client(app.base);
-  assert.equal((await c.get('/')).status, 200);
+  const landing = await c.get('/');
+  assert.equal(landing.status, 200);
+  assert.match(landing.body, /<title>Greenlight/);
+  assert.equal((await c.get('/signin')).status, 200);
   const appRes = await c.get('/app');
   assert.equal(appRes.status, 302);
-  assert.equal(appRes.headers.get('location'), '/');
+  assert.equal(appRes.headers.get('location'), '/signin');
 });
 
 test('developer login creates the user and a session', async () => {
@@ -32,7 +35,7 @@ test('developer login creates the user and a session', async () => {
   assert.equal(me.body.user.email, 'dana@acme.com');
   assert.equal(me.body.user.name, 'Dana Levi');
   assert.deepEqual(me.body.workspaces, []);
-  assert.equal((await c.get('/')).headers.get('location'), '/app');
+  assert.equal((await c.get('/signin')).headers.get('location'), '/app');
 });
 
 test('developer login rejects invalid emails', async () => {

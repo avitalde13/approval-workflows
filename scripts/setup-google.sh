@@ -3,7 +3,7 @@
 # The client secret is hidden while you paste it and is never printed.
 cd "$(dirname "$0")/.." || exit 1
 
-echo "Google sign-in setup for Approval Workflows"
+echo "Google sign-in setup for Greenlight"
 echo
 echo "Paste the Client ID (ends with .apps.googleusercontent.com), then press Enter:"
 read "client_id?> "

@@ -36,7 +36,7 @@ test('an Admin invites someone and the email contains a working link', async () 
 
   const mail = app.mailer.outbox[0];
   assert.equal(mail.to, 'ben@acme.com');
-  assert.equal(mail.subject, 'Ada Admin invited you to Acme on Approval Workflows');
+  assert.equal(mail.subject, 'Ada Admin invited you to Acme on Greenlight');
   assert.match(mail.text, /as Manager/);
   assert.match(mail.html, /Accept invitation/);
 

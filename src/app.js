@@ -65,8 +65,9 @@ function createApp({
   app.use('/api', sameOriginJsonOnly, apiRoutes(pool));
 
   const page = (file) => (req, res) => res.sendFile(path.join(__dirname, '..', 'public', file));
-  app.get('/', (req, res, next) => (req.user ? res.redirect('/app') : page('index.html')(req, res, next)));
-  app.get('/app', (req, res, next) => (req.user ? page('app.html')(req, res, next) : res.redirect('/')));
+  app.get('/', page('landing.html'));
+  app.get('/signin', (req, res, next) => (req.user ? res.redirect('/app') : page('signin.html')(req, res, next)));
+  app.get('/app', (req, res, next) => (req.user ? page('app.html')(req, res, next) : res.redirect('/signin')));
   app.get('/invite/:token', page('invite.html'));
   app.get('/privacy', page('legal/privacy.html'));
   app.get('/terms', page('legal/terms.html'));

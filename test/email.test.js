@@ -15,14 +15,14 @@ test('console provider keeps emails in the outbox, newest first', async () => {
 test('Brevo provider sends the right request', async () => {
   let call;
   const mailer = createMailer(
-    { provider: 'brevo', from: 'no-reply@acme.com', fromName: 'Approval Workflows', brevoApiKey: 'xkeysib-test' },
+    { provider: 'brevo', from: 'no-reply@acme.com', fromName: 'Greenlight', brevoApiKey: 'xkeysib-test' },
     { fetchImpl: async (url, options) => { call = { url, options }; return Response.json({ messageId: 'm1' }); } }
   );
   await mailer.send({ to: 'ben@acme.com', subject: 'Hi', text: 'Hello', html: '<p>Hello</p>' });
   assert.equal(call.url, 'https://api.brevo.com/v3/smtp/email');
   assert.equal(call.options.headers['api-key'], 'xkeysib-test');
   assert.deepEqual(JSON.parse(call.options.body), {
-    sender: { name: 'Approval Workflows', email: 'no-reply@acme.com' },
+    sender: { name: 'Greenlight', email: 'no-reply@acme.com' },
     to: [{ email: 'ben@acme.com' }], subject: 'Hi', textContent: 'Hello', htmlContent: '<p>Hello</p>',
   });
 });

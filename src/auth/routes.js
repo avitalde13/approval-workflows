@@ -50,7 +50,7 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
 
   // Step 1: send the user to Google.
   router.get('/google', (req, res) => {
-    if (!config.google.clientId) return res.redirect('/?error=google_not_configured');
+    if (!config.google.clientId) return res.redirect('/signin?error=google_not_configured');
     const state = crypto.randomBytes(16).toString('base64url');
     const verifier = crypto.randomBytes(32).toString('base64url');
     const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
@@ -77,7 +77,7 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
     const fail = (reason, detail = '') => {
       console.warn(`Google sign-in failed: ${reason}${detail ? ` (${detail})` : ''}`);
       res.clearCookie(OAUTH_COOKIE, { path: '/auth' });
-      res.redirect(`/?error=${encodeURIComponent(reason)}`);
+      res.redirect(`/signin?error=${encodeURIComponent(reason)}`);
     };
     try {
       if (req.query.error) return fail('google_denied', String(req.query.error).slice(0, 100));

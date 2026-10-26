@@ -80,13 +80,13 @@ test('a wrong state is rejected (stops forged sign-in links)', async () => {
   const c = client(app.base);
   await startSignIn(c);
   const cb = await c.get('/auth/google/callback?code=good-code&state=forged');
-  assert.equal(cb.headers.get('location'), '/?error=state_mismatch');
+  assert.equal(cb.headers.get('location'), '/signin?error=state_mismatch');
   assert.equal((await c.get('/api/me')).status, 401);
 });
 
 test('a callback without the sign-in cookie is rejected', async () => {
   const cb = await client(app.base).get('/auth/google/callback?code=good-code&state=anything');
-  assert.equal(cb.headers.get('location'), '/?error=state_missing');
+  assert.equal(cb.headers.get('location'), '/signin?error=state_missing');
 });
 
 test('unverified Google emails are rejected', async () => {
@@ -94,14 +94,14 @@ test('unverified Google emails are rejected', async () => {
   const c = client(app.base);
   const params = await startSignIn(c);
   const cb = await c.get(`/auth/google/callback?code=good-code&state=${params.get('state')}`);
-  assert.equal(cb.headers.get('location'), '/?error=email_not_verified');
+  assert.equal(cb.headers.get('location'), '/signin?error=email_not_verified');
 });
 
 test('a failed code exchange is handled', async () => {
   const c = client(app.base);
   const params = await startSignIn(c);
   const cb = await c.get(`/auth/google/callback?code=bad-code&state=${params.get('state')}`);
-  assert.equal(cb.headers.get('location'), '/?error=token_exchange_failed');
+  assert.equal(cb.headers.get('location'), '/signin?error=token_exchange_failed');
 });
 
 test('developer login is off when Google is configured', async () => {

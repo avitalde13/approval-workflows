@@ -10,7 +10,7 @@ async function main() {
   if (config.devLoginEnabled) console.warn('Developer login is ON (no GOOGLE_CLIENT_ID). Never use this in production.');
   const pool = createPool();
   await migrate(pool);
-  createApp({ pool }).listen(config.port, () => console.log(`Approval Workflows running on ${config.appUrl}`));
+  createApp({ pool }).listen(config.port, () => console.log(`Greenlight running on ${config.appUrl}`));
 }
 
 main().catch((err) => {

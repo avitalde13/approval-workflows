@@ -1,6 +1,8 @@
-# Approval Workflows
+# Greenlight
 
-**Multi-tenant approval and purchasing workflows for organizations.**
+**Get the green light, faster.** Multi-tenant approval and purchasing workflows for organizations.
+
+Live: https://approval-workflows.up.railway.app
 
 Employees submit requests (purchases, expenses, time off). Each request moves through a configurable approval chain, for example **Manager → Finance → VP**, with email notifications at every step and a complete audit trail. An AI layer classifies incoming requests and flags anomalies such as unusual amounts or first-time vendors.
 
@@ -15,7 +17,7 @@ Large organizations keep hitting the same issues:
 - **Weak controls.** Permissions are informal and there is no reliable record of who approved what.
 - **Manual review.** Finance teams check every request by hand to spot the risky ones.
 
-Approval Workflows puts every request in one place, routes it to the right people, records every decision, and highlights the requests that need a closer look.
+Greenlight puts every request in one place, routes it to the right people, records every decision, and highlights the requests that need a closer look.
 
 ## Features
 
@@ -184,7 +186,7 @@ The app reads `.env` on startup by itself, so this works on any Node version (va
 | `PORT` | No | Port to listen on. Defaults to `3000`. |
 | `EMAIL_PROVIDER` | No | `brevo`, `resend` or `none`. Defaults to `console` in development (printed, listed at /dev/outbox) and `none` in production (no emails; Admins copy the invite link and send it themselves). |
 | `EMAIL_FROM` | With brevo or resend | Sender address (a verified sender in Brevo, or an address on a verified domain in Resend). |
-| `EMAIL_FROM_NAME` | No | Sender name. Defaults to `Approval Workflows`. |
+| `EMAIL_FROM_NAME` | No | Sender name. Defaults to `Greenlight`. |
 | `BREVO_API_KEY` | With Brevo | Brevo API key. |
 | `RESEND_API_KEY` | With Resend | Resend API key. |
 | `ANTHROPIC_API_KEY` | For AI | Turns on AI classification. Without it, only the rule checks run. |
@@ -202,7 +204,7 @@ npm test
 ```
 approval-workflows/
 ├── migrations/          SQL schema, applied in order on startup
-├── public/              Sign-in page and app shell (HTML, CSS, JS)
+├── public/              Landing page, sign-in, app shell (HTML, CSS, JS), images and legal pages
 ├── src/
 │   ├── app.js           Express app (routes and middleware)
 │   ├── server.js        Starts the HTTP server

@@ -172,7 +172,7 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
     startAi(requestId);
     const request = await loadRequest(pool, req.workspaceId, requestId);
     if (firstActive) await notifyApprover(request, firstActive.approver_id);
-    else await notifyRequester(request, 'approved', 'Approval Workflows');
+    else await notifyRequester(request, 'approved', 'Greenlight');
     const { requester_email: _hidden, ...created } = request;
     res.status(201).json({ ...created, approvals: await loadApprovals(pool, requestId), insight: await getInsight(pool, requestId) });
   });
