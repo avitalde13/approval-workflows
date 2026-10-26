@@ -1,0 +1,6 @@
+node_modules
+.env
+.env.local
+.git
+.DS_Store
+*.private.txt
