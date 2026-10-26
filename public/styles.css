@@ -176,3 +176,16 @@ input[type="date"] { width: 100%; font: inherit; font-size: 16px; padding: 9px 1
 .flag-high::before { background: #ef4444; }
 .flag-low::before { background: var(--border); }
 .flag-src { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+
+/* Legal pages */
+.legal { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px; line-height: 1.65; }
+.legal h1 { font-size: 30px; margin: 28px 0 4px; }
+.legal h2 { font-size: 19px; margin: 28px 0 8px; }
+.legal li { margin-bottom: 6px; }
+.legal-links { text-align: center; font-size: 13px; color: var(--muted); margin-top: 18px; }
+.legal-links a { color: var(--muted); }
+
+/* Invite link (no email provider) */
+.invite-link-row { display: flex; gap: 8px; margin-top: 8px; }
+.invite-link { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.btn-small { padding: 6px 12px; font-size: 14px; }

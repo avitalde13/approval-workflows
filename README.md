@@ -154,6 +154,10 @@ Open http://localhost:3000.
 
 **Emails in local development:** with the default `EMAIL_PROVIDER=console`, nothing is really sent. Emails are printed in the terminal and listed at http://localhost:3000/dev/outbox, so you can click invite links while testing.
 
+**Without an email provider:** in production with `EMAIL_PROVIDER` unset (or `none`), no emails are sent. After inviting someone, the Admin sees the invite link with a Copy button and shares it any way they like.
+
+**Privacy and Terms:** public pages at `/privacy` and `/terms` (needed to publish the Google OAuth app). Edit `public/legal/` to match your organization.
+
 ### Google OAuth setup
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project (for example *Approval Workflows*).
@@ -178,8 +182,8 @@ The app reads `.env` on startup by itself, so this works on any Node version (va
 | `GOOGLE_CLIENT_SECRET` | In production | Google OAuth client secret. |
 | `APP_URL` | In production | Public base URL, used to build the OAuth redirect URI. Defaults to `http://localhost:3000`. |
 | `PORT` | No | Port to listen on. Defaults to `3000`. |
-| `EMAIL_PROVIDER` | In production | `brevo` or `resend`. Defaults to `console` (development only). |
-| `EMAIL_FROM` | In production | Sender address (a verified sender in Brevo, or an address on a verified domain in Resend). |
+| `EMAIL_PROVIDER` | No | `brevo`, `resend` or `none`. Defaults to `console` in development (printed, listed at /dev/outbox) and `none` in production (no emails; Admins copy the invite link and send it themselves). |
+| `EMAIL_FROM` | With brevo or resend | Sender address (a verified sender in Brevo, or an address on a verified domain in Resend). |
 | `EMAIL_FROM_NAME` | No | Sender name. Defaults to `Approval Workflows`. |
 | `BREVO_API_KEY` | With Brevo | Brevo API key. |
 | `RESEND_API_KEY` | With Resend | Resend API key. |

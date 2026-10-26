@@ -113,11 +113,12 @@ function invitationRoutes(pool, mailer) {
       );
       const ws = await pool.query('SELECT name FROM workspaces WHERE id = $1', [req.workspaceId]);
 
+      const link = `${config.appUrl}/invite/${token}`;
       const message = templates.invitation({
         workspaceName: ws.rows[0].name,
         inviterName: req.user.name,
         role,
-        link: `${config.appUrl}/invite/${token}`,
+        link,
         expiresAt,
       });
       try {
@@ -131,7 +132,9 @@ function invitationRoutes(pool, mailer) {
         workspaceId: req.workspaceId, actorId: req.user.id, action: 'invitation.sent', entityType: 'invitation', entityId: rows[0].id,
         details: { email, role },
       });
-      res.status(201).json({ ...rows[0], invited_by_name: req.user.name });
+      // Without an email provider, the Admin gets the link to share it themselves.
+      const emailed = mailer.provider !== 'none';
+      res.status(201).json({ ...rows[0], invited_by_name: req.user.name, emailed, ...(emailed ? {} : { link }) });
     } catch (err) {
       next(err);
     }

@@ -3,6 +3,7 @@
 //   (newest first) so you can open them at /dev/outbox.
 // - "brevo":  https://brevo.com  (BREVO_API_KEY, EMAIL_FROM must be a verified sender)
 // - "resend": https://resend.com (RESEND_API_KEY, EMAIL_FROM on a verified domain)
+// - "none":   nothing is sent. Invitations return their link so an Admin can share it.
 
 const OUTBOX_LIMIT = 50;
 
@@ -18,6 +19,8 @@ function createMailer({ provider, from, fromName, brevoApiKey, resendApiKey }, {
       log(`\n[email] To: ${to}\nSubject: ${subject}\n${text}\n`);
       return { id: `console-${Date.now()}` };
     }
+
+    if (provider === 'none') return { id: null, skipped: true };
 
     if (provider === 'brevo') {
       const res = await fetchImpl('https://api.brevo.com/v3/smtp/email', {

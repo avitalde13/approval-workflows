@@ -68,6 +68,8 @@ function createApp({
   app.get('/', (req, res, next) => (req.user ? res.redirect('/app') : page('index.html')(req, res, next)));
   app.get('/app', (req, res, next) => (req.user ? page('app.html')(req, res, next) : res.redirect('/')));
   app.get('/invite/:token', page('invite.html'));
+  app.get('/privacy', page('legal/privacy.html'));
+  app.get('/terms', page('legal/terms.html'));
 
   // Development only: read the emails the app "sent" (EMAIL_PROVIDER=console).
   if (!config.isProduction && mailer.provider === 'console') {

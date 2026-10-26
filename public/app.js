@@ -59,6 +59,19 @@ function notice(el, text, ok) {
   el.hidden = false;
 }
 
+// After inviting: either "sent", or (no email set up) the link with a Copy button.
+function inviteResult(email, inv) {
+  if (inv.emailed !== false) return notice($('invite-msg'), `Invitation sent to ${email}.`, true);
+  const input = h('input', { class: 'invite-link', type: 'text', readonly: true, value: inv.link, onclick: (e) => e.target.select() });
+  const copy = h('button', { class: 'btn btn-small', type: 'button', onclick: async () => {
+    try { await navigator.clipboard.writeText(inv.link); copy.textContent = 'Copied'; } catch { input.select(); }
+  } }, 'Copy');
+  const el = $('invite-msg');
+  el.className = 'notice notice-ok';
+  el.replaceChildren(h('span', {}, `Invitation created. Send this link to ${email} (valid for 7 days):`), h('div', { class: 'invite-link-row' }, input, copy));
+  el.hidden = false;
+}
+
 function savedWorkspaceId() { try { return Number(localStorage.getItem(STORE_KEY)) || null; } catch { return null; } }
 function saveWorkspaceId(id) { try { localStorage.setItem(STORE_KEY, String(id)); } catch {} }
 
@@ -325,8 +338,7 @@ async function loadInvitations() {
       h('button', { class: 'link-btn', type: 'button', onclick: async (e) => {
         e.target.disabled = true;
         try {
-          await post(`/api/workspaces/${ws.id}/invitations`, { email: inv.email, role: inv.role });
-          notice($('invite-msg'), `New invitation sent to ${inv.email}.`, true);
+          inviteResult(inv.email, await post(`/api/workspaces/${ws.id}/invitations`, { email: inv.email, role: inv.role }));
           loadInvitations();
         } catch (err) { notice($('invite-msg'), err.message, false); e.target.disabled = false; }
       } }, 'Resend'),
@@ -346,8 +358,7 @@ $('invite-form').addEventListener('submit', async (e) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return notice($('invite-msg'), 'Enter a valid email address.', false);
   $('invite-btn').disabled = true;
   try {
-    await post(`/api/workspaces/${ws.id}/invitations`, { email, role: $('invite-role').value });
-    notice($('invite-msg'), `Invitation sent to ${email}.`, true);
+    inviteResult(email, await post(`/api/workspaces/${ws.id}/invitations`, { email, role: $('invite-role').value }));
     $('invite-email').value = '';
     loadInvitations();
   } catch (err) {
