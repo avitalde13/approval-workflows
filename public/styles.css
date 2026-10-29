@@ -202,7 +202,7 @@ input[type="date"] { width: 100%; font: inherit; font-size: 16px; padding: 9px 1
 .demo-view select { font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: #022c22; color: #ecfdf5; max-width: 100%; }
 .demo-cta { color: #fff !important; font-weight: 700; white-space: nowrap; }
 .demo-link { text-align: center; font-size: 14px; color: var(--muted); margin: 18px 0 0; }
-@media (max-width: 640px) { .demo-bar { padding: 10px 16px; } .demo-view { width: 100%; } .demo-view select { flex: 1; } }
+@media (max-width: 640px) { .demo-bar { padding: 10px 16px; } .demo-view { width: 100%; min-width: 0; } .demo-view select { flex: 1; min-width: 0; width: 100%; } }
 
 /* Needs changes and receipts */
 .st-changes_requested { background: #ede9fe; color: #5b21b6; }

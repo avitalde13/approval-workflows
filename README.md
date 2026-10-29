@@ -33,6 +33,17 @@ Greenlight puts every request in one place, routes it to the right people, recor
 | **Audit log** | Append-only record of every action, readable by Admins | ✅ Done |
 | **Anomaly checks** | Rule-based flags: unusual amounts, new vendors, duplicates, amounts just under a limit, split purchases, overlapping time off | ✅ Done |
 | **AI classification** | Claude categorizes each request, rates its risk and explains concerns (optional) | ✅ Done |
+| **Live demo** | One click on the landing page opens a private sample company; view it as any person; deleted after 24 hours | ✅ Done |
+| **Needs changes** | Approvers can send a request back; the requester edits and resubmits it for a new round | ✅ Done |
+| **Receipts** | Attach photos or PDFs (up to 5 per request, 5 MB each), checked by file signature | ✅ Done |
+| **Dashboard** | Approved spending by month, top vendors and people, approval rate, time to decide, CSV export | ✅ Done |
+| **Notification bell** | In-app notifications for approvals, decisions, escalations and budget alerts | ✅ Done |
+| **Reminders and escalation** | Remind slow approvers, then move the step to their manager or an Admin | ✅ Done |
+| **Out of office** | Pick a delegate who approves for you while you're away | ✅ Done |
+| **Departments and budgets** | Monthly, quarterly or yearly budgets; flags at 80% and 100%; Admin alerts | ✅ Done |
+| **Currencies** | A base currency, with exchange rates set by hand or from the European Central Bank | ✅ Done |
+| **Time off** | Vacation balances in business days, per-person allowances, and a team calendar | ✅ Done |
+| **Slack** | Approvals, decisions and budget alerts posted to a channel through an incoming webhook | ✅ Done |
 
 ## Roadmap
 
@@ -68,6 +79,16 @@ Greenlight puts every request in one place, routes it to the right people, recor
 - [x] AI runs in the background and can never lower a risk the rules found
 - [x] Admins can re-run the AI for a request
 - [x] Automated tests (with a fake Claude client)
+
+### Milestone 5: Everyday workflow ✅
+- [x] Live demo company (private per visitor, persona switcher, auto-cleanup)
+- [x] "Needs changes" with edit and resubmit; approval rounds in the timeline
+- [x] Receipt and invoice attachments
+- [x] Spending dashboard and CSV export
+- [x] Notification bell, reminders, escalation and out-of-office delegation
+- [x] Departments, budgets and multi-currency reporting
+- [x] Vacation balances and team calendar
+- [x] Slack notifications
 
 ## How approvals work
 
@@ -111,6 +132,8 @@ Every request gets a **risk level** (low, medium, high) and a list of **flags** 
 | `just_below_threshold` | Within 5% below an approval step's minimum amount |
 | `possible_split` | Same person and vendor within 7 days, each under a limit, together over it |
 | `overlapping_time_off` / `long_time_off` | Overlaps another pending/approved time off, or longer than 21 days |
+| `over_balance` | Time off takes more business days than the person has left this year |
+| `budget_80` / `over_budget` | With this request, the department reaches 80% / goes over its budget (approved plus waiting) |
 
 **AI classification** (optional, Claude): after a request is submitted, Claude reads it in the background and returns a category (Software & subscriptions, Travel, Hardware & equipment, …), a risk level, a one-line summary for the approver, and judgment flags such as *vague justification* or *possible personal use*. It uses structured JSON output (`output_config.format`), so the answer always matches a fixed schema, at low effort to keep cost and latency down.
 
@@ -212,10 +235,17 @@ greenlight/
 │   ├── db.js            Database pool and migrations
 │   ├── auth/            Google OAuth and sessions
 │   ├── email/           Email sending (Brevo, Resend, console) and templates
-│   ├── routes/          API routes (workspaces, invitations, members, chains, requests, audit log)
+│   ├── routes/          API routes (workspaces, invitations, members, chains, requests, reports, time off, settings, notifications)
 │   ├── permissions.js   Role checks and who may see a request
 │   ├── insights/        Rule-based anomaly checks and AI classification
 │   ├── chains.js        Approval chains and approver resolution
+│   ├── routing.js       Out-of-office delegation when a step becomes active
+│   ├── reminders.js     Reminders and escalation (runs every 15 minutes)
+│   ├── notifier.js      In-app notifications, email and Slack
+│   ├── budgets.js       Department budget usage and alerts
+│   ├── currency.js      Base currency and exchange rates
+│   ├── timeoff.js       Business days, balances and the calendar
+│   ├── demo.js          The live demo company
 │   └── audit.js         Append-only audit log
 └── test/                Automated tests
 ```
@@ -243,8 +273,22 @@ greenlight/
 | POST | `/api/workspaces/:id/requests` | Submit a request (`type`, `title`, `description?`, `amount`, `currency`, `vendor` or `start_date`/`end_date`) |
 | GET | `/api/workspaces/:id/requests?scope=` | `mine`, `to_approve`, `team` (Managers) or `all` (Admins) |
 | GET | `/api/workspaces/:id/requests/:requestId` | Request details and approval timeline |
-| POST | `/api/workspaces/:id/requests/:requestId/decision` | `{ decision: "approve" \| "reject", comment }` (current approver) |
-| POST | `/api/workspaces/:id/requests/:requestId/cancel` | Cancel (requester, while pending) |
+| POST | `/api/workspaces/:id/requests/:requestId/decision` | `{ decision: "approve" \| "reject" \| "request_changes", comment }` (current approver) |
+| POST | `/api/workspaces/:id/requests/:requestId/resubmit` | Edit and resubmit a request that was sent back (requester) |
+| POST | `/api/workspaces/:id/requests/:requestId/cancel` | Cancel (requester, while pending or sent back) |
+| POST | `/api/workspaces/:id/requests/:requestId/files` | Attach a receipt (`{ filename, content_type, data }`, base64; requester) |
+| GET / DELETE | `/api/workspaces/:id/requests/:requestId/files/:fileId` | Open or remove a file |
+| GET | `/api/workspaces/:id/reports?range=` | Dashboard numbers (`30d`, `90d`, `12m`, `all`; Managers and Admins) |
+| GET | `/api/workspaces/:id/reports/export.csv?range=` | CSV export |
+| GET | `/api/workspaces/:id/time-off/balance` · `/balances` · `/calendar?month=` | Your balance, team balances, who's out |
+| PATCH | `/api/workspaces/:id/time-off/allowance/:userId` | Per-person vacation days (Admins) |
+| GET / PATCH | `/api/workspaces/:id/settings` | Reminders, escalation, vacation days, base currency (Admins change) |
+| PUT · POST | `/api/workspaces/:id/rates` · `/rates/refresh` | Exchange rates by hand, or today's ECB rates (Admins) |
+| GET · POST · PATCH · DELETE | `/api/workspaces/:id/departments` | Departments and budgets (Admins change) |
+| PUT · DELETE | `/api/workspaces/:id/slack` | Connect or disconnect Slack (Admins) |
+| PUT · DELETE | `/api/workspaces/:id/away` | Your out-of-office dates and delegate |
+| GET · POST | `/api/notifications` · `/api/notifications/read` | The bell |
+| POST | `/auth/demo` · `/auth/demo/switch` | Start the live demo; view it as another person |
 | POST | `/api/workspaces/:id/requests/:requestId/reanalyze` | Re-run the AI for a request (Admins only) |
 | GET | `/api/workspaces/:id/audit-log?limit=&before=` | Audit log, newest first (Admins only) |
 
