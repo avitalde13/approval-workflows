@@ -81,3 +81,15 @@ test('expired demos are deleted with their people', async () => {
   const orphans = await app.pool.query('SELECT COUNT(*)::int AS n FROM users WHERE is_demo = TRUE AND id NOT IN (SELECT user_id FROM memberships)');
   assert.equal(orphans.rows[0].n, 0);
 });
+
+test('the demo includes a request sent back for changes and PDF receipts', async () => {
+  const { c, ws } = await startDemo();
+  const all = (await c.get(`/api/workspaces/${ws.id}/requests?scope=all`)).body.requests;
+  assert.ok(all.some((r) => r.status === 'changes_requested'));
+  const withReceipt = all.find((r) => r.file_count > 0);
+  const detail = (await c.get(`/api/workspaces/${ws.id}/requests/${withReceipt.id}`)).body;
+  const res = await fetch(`${app.base}/api/workspaces/${ws.id}/requests/${withReceipt.id}/files/${detail.files[0].id}`,
+    { headers: { Cookie: [...c.jar].map(([k, v]) => `${k}=${v}`).join('; ') } });
+  const pdf = Buffer.from(await res.arrayBuffer()).toString();
+  assert.ok(pdf.startsWith('%PDF-') && pdf.trim().endsWith('%%EOF'));
+});

@@ -62,14 +62,16 @@ function approvalNeeded({ workspaceName, requesterName, requestTitle, amount, cu
 
 // Sent to the requester when their request is approved, rejected or moves to the next step.
 function requestStatusChanged({ workspaceName, requestTitle, status, actorName, comment, link }) {
-  const verb = { approved: 'approved', rejected: 'rejected', advanced: 'approved and moved to the next approver' }[status] || status;
-  const subject = `Your request "${requestTitle}" was ${status === 'advanced' ? 'approved by ' + actorName : verb}`;
+  const verb = { approved: 'approved', rejected: 'rejected', advanced: 'approved and moved to the next approver', changes_requested: 'asked for changes to' }[status] || status;
+  const subject = status === 'changes_requested'
+    ? `Changes requested: ${requestTitle}`
+    : `Your request "${requestTitle}" was ${status === 'advanced' ? 'approved by ' + actorName : verb}`;
   const text =
     `${actorName} ${verb} your request "${requestTitle}" in ${workspaceName}.` +
     (comment ? `\n\nComment: ${comment}` : '') +
     `\n\nView it: ${link}`;
   const html = layout({
-    heading: `Your request was ${status === 'rejected' ? 'rejected' : 'approved'}`,
+    heading: status === 'changes_requested' ? 'Your request needs changes' : `Your request was ${status === 'rejected' ? 'rejected' : 'approved'}`,
     bodyHtml:
       `<p style="margin:0 0 8px;line-height:1.6"><strong>${escapeHtml(actorName)}</strong> ${verb} <strong>${escapeHtml(requestTitle)}</strong>.</p>` +
       (comment ? `<p style="margin:0 0 8px;padding:10px 12px;background:#f6f7fb;border-radius:8px;line-height:1.6">${escapeHtml(comment)}</p>` : ''),

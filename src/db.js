@@ -15,8 +15,15 @@ function createPool(databaseUrl = config.databaseUrl) {
   }
   const { newDb } = require('pg-mem');
   const { Pool } = newDb().adapters.createPg();
-  return new Pool();
+  const pool = new Pool();
+  pool.inMemory = true;
+  return pool;
 }
+
+// pg-mem can't drop CHECK constraints declared inline, so later migrations couldn't extend the
+// allowed status values. In memory only, inline status checks are left out (the app validates
+// statuses anyway, and real PostgreSQL keeps every constraint).
+const forMemory = (sql) => sql.replace(/(status\s+TEXT NOT NULL(?: DEFAULT '\w+')?)\s+CHECK \(status IN \([^)]*\)\)/g, '$1');
 
 // Applies every migrations/*.sql file not yet recorded in schema_migrations, in name order.
 async function migrate(pool) {
@@ -30,7 +37,8 @@ async function migrate(pool) {
   const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
   for (const file of files) {
     if (applied.has(file)) continue;
-    await pool.query(fs.readFileSync(path.join(dir, file), 'utf8'));
+    const sql = fs.readFileSync(path.join(dir, file), 'utf8');
+    await pool.query(pool.inMemory ? forMemory(sql) : sql);
     await pool.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
   }
 }

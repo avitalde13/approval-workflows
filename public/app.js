@@ -4,8 +4,8 @@
 const $ = (id) => document.getElementById(id);
 const STORE_KEY = 'aw.workspace';
 const TYPE_LABEL = { purchase: 'Purchase', expense: 'Expense', time_off: 'Time off' };
-const STATUS_LABEL = { pending: 'Pending', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
-const STEP_LABEL = { waiting: 'Waiting', pending: 'Waiting for decision', approved: 'Approved', rejected: 'Rejected', skipped: 'Skipped', cancelled: 'Cancelled' };
+const STATUS_LABEL = { pending: 'Pending', changes_requested: 'Needs changes', approved: 'Approved', rejected: 'Rejected', cancelled: 'Cancelled' };
+const STEP_LABEL = { waiting: 'Waiting', pending: 'Waiting for decision', approved: 'Approved', rejected: 'Rejected', returned: 'Sent back for changes', skipped: 'Skipped', cancelled: 'Cancelled' };
 const RANK = { employee: 1, manager: 2, admin: 3 };
 
 let me = null;      // { user, workspaces }
@@ -52,6 +52,24 @@ function money(amount, currency) {
 const amountOrDates = (r) => (r.type === 'time_off' ? `${fmtDay(r.start_date)} – ${fmtDay(r.end_date)}` : money(r.amount, r.currency));
 const badge = (cls, text) => h('span', { class: `badge ${cls}` }, text);
 const roleBadge = (role) => h('span', { class: `role role-${role}` }, role);
+
+// Receipts: read a picked file as base64 and upload it to a request.
+const MAX_FILE = 5 * 1024 * 1024;
+const fileSize = (n) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+function readBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(new Error(`Couldn't read ${file.name}.`));
+    reader.readAsDataURL(file);
+  });
+}
+async function uploadFiles(requestId, files) {
+  for (const file of files) {
+    if (file.size > MAX_FILE) throw new Error(`${file.name} is larger than 5 MB.`);
+    await post(`/api/workspaces/${ws.id}/requests/${requestId}/files`, { filename: file.name, content_type: file.type, data: await readBase64(file) });
+  }
+}
 
 function notice(el, text, ok) {
   el.textContent = text;
@@ -168,7 +186,7 @@ async function loadRequests() {
   $('request-rows').replaceChildren(...requests.map((r) => h('tr', { onclick: () => openRequest(r.id), tabindex: '0', onkeydown: (e) => e.key === 'Enter' && openRequest(r.id) },
     h('td', {}, h('strong', {}, r.title), h('small', { class: 'sub' }, scope === 'mine' ? (r.current_step ? `Waiting for ${r.current_approver} (${r.current_step})` : '') : r.requester_name)),
     h('td', { class: 'hide-sm' }, TYPE_LABEL[r.type]),
-    h('td', {}, amountOrDates(r)),
+    h('td', {}, amountOrDates(r), r.file_count ? h('span', { class: 'clip', title: `${r.file_count} file(s) attached` }, ` 📎${r.file_count}`) : ''),
     h('td', {}, badge(`st-${r.status}`, STATUS_LABEL[r.status]), r.risk_level && r.risk_level !== 'low' ? h('span', { class: `risk risk-${r.risk_level}`, title: `${r.flag_count} flag(s)` }, r.risk_level === 'high' ? 'High risk' : 'Check') : ''),
     h('td', { class: 'hide-sm' }, dateFmt.format(new Date(r.created_at))),
   )));
@@ -186,7 +204,7 @@ async function openRequest(id) {
   ].filter(Boolean);
 
   const error = h('p', { class: 'error', hidden: true });
-  const comment = h('textarea', { rows: 2, maxlength: 1000, placeholder: 'Comment (required when rejecting)', 'aria-label': 'Comment' });
+  const comment = h('textarea', { rows: 2, maxlength: 1000, placeholder: 'Comment (required when rejecting or sending back)', 'aria-label': 'Comment' });
   async function decide(decision, btn) {
     error.hidden = true;
     btn.disabled = true;
@@ -211,22 +229,59 @@ async function openRequest(id) {
     } catch (err) { error.textContent = err.message; error.hidden = false; btn.disabled = false; }
   }
 
+  // Files: open in a new tab; the requester can add or remove them until the request is decided.
+  const filesUrl = `/api/workspaces/${ws.id}/requests/${r.id}/files`;
+  const picker = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif,application/pdf', multiple: true, hidden: true,
+    onchange: async (e) => {
+      try { await uploadFiles(r.id, [...e.target.files]); } catch (err) { alert(err.message); }
+      openRequest(r.id);
+      loadRequests();
+    } });
+  const filesSection = (r.files.length || r.can_attach) && h('section', { class: 'files' },
+    h('h3', { class: 'timeline-title' }, 'Receipts and files'),
+    r.files.length ? h('ul', { class: 'file-list' }, ...r.files.map((f) => h('li', {},
+      h('a', { href: `${filesUrl}/${f.id}`, target: '_blank', rel: 'noopener' }, f.content_type === 'application/pdf' ? '📄 ' : '🖼️ ', f.filename),
+      h('span', { class: 'muted' }, ` · ${fileSize(f.size_bytes)}`),
+      r.can_attach && h('button', { class: 'link-btn danger', type: 'button', onclick: async () => {
+        if (!confirm(`Remove ${f.filename}?`)) return;
+        try { await send('DELETE', `${filesUrl}/${f.id}`); openRequest(r.id); loadRequests(); } catch (err) { alert(err.message); }
+      } }, 'Remove')))) : h('p', { class: 'muted', style: 'margin:0 0 8px' }, 'No files yet. Approvers often ask for a receipt or invoice.'),
+    r.can_attach && r.files.length < 5 && h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => picker.click() }, '📎 Attach receipt'),
+    picker);
+
+  // Sent back: show what to change, and let the requester edit and resubmit.
+  const returned = [...r.approvals].reverse().find((a) => a.status === 'returned');
+  const changesNote = r.status === 'changes_requested' && returned && h('div', { class: 'changes-note' },
+    h('strong', {}, `${returned.approver_name || 'An approver'} asked for changes`),
+    returned.comment && h('p', {}, returned.comment),
+    r.can_edit && h('button', { class: 'btn btn-primary btn-small', type: 'button', onclick: () => { $('detail-dialog').close(); openRequestForm(r); } }, 'Edit and resubmit'));
+
+  // A new round starts each time the request is resubmitted.
+  const timeline = [];
+  r.approvals.forEach((a, i) => {
+    if (i > 0 && a.round !== r.approvals[i - 1].round) timeline.push(h('li', { class: 'round-sep' }, `Resubmitted · round ${a.round}`));
+    timeline.push(a);
+  });
+
   $('detail').replaceChildren(...[
     h('div', { class: 'detail-head' }, h('h2', {}, r.title), badge(`st-${r.status}`, STATUS_LABEL[r.status])),
+    changesNote,
     h('dl', { class: 'facts' }, ...facts.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
     r.description && h('p', { class: 'desc' }, r.description),
+    filesSection,
     insightPanel(r),
     h('h3', { class: 'timeline-title' }, 'Approvals'),
-    h('ol', { class: 'timeline' }, ...r.approvals.map((a) => h('li', { class: `step step-${a.status}` },
+    h('ol', { class: 'timeline' }, ...timeline.map((a) => (a instanceof Node ? a : h('li', { class: `step step-${a.status}` },
       h('span', { class: 'dot' }),
       h('div', {},
         h('strong', {}, a.step_name), ' ', h('span', { class: 'muted' }, a.approver_name ? `· ${a.approver_name}` : ''),
         h('div', { class: 'step-status' }, STEP_LABEL[a.status], a.decided_at && a.status !== 'skipped' ? ` · ${timeFmt.format(new Date(a.decided_at))}` : ''),
         a.comment && h('div', { class: 'step-comment' }, a.comment),
-      )))),
+      ))))),
     r.can_decide && h('div', { class: 'decide' }, comment, error,
       h('div', { class: 'dialog-actions' },
         h('button', { class: 'btn btn-danger', type: 'button', onclick: (e) => decide('reject', e.target) }, 'Reject'),
+        h('button', { class: 'btn btn-secondary', type: 'button', title: 'Ask the requester to change something and resubmit', onclick: (e) => decide('request_changes', e.target) }, 'Send back'),
         h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => decide('approve', e.target) }, 'Approve'))),
     !r.can_decide && error,
     h('div', { class: 'dialog-actions' },
@@ -270,12 +325,28 @@ function syncRequestForm() {
   $('vendor-optional').hidden = type === 'purchase';
 }
 $('rq-type').addEventListener('change', syncRequestForm);
-$('new-request').addEventListener('click', () => {
+
+// The same form creates a request, or (editing) resubmits one that was sent back.
+let editing = null;
+function openRequestForm(r = null) {
+  editing = r;
   $('request-form').reset();
   $('rq-error').hidden = true;
+  $('rq-form-title').textContent = r ? 'Edit and resubmit' : 'New request';
+  $('rq-btn').textContent = r ? 'Resubmit for approval' : 'Submit for approval';
+  $('rq-type').disabled = Boolean(r);
+  $('rq-files-field').hidden = Boolean(r);
+  if (r) {
+    $('rq-type').value = r.type;
+    $('rq-title').value = r.title;
+    $('rq-desc').value = r.description || '';
+    if (r.type === 'time_off') { $('rq-start').value = r.start_date; $('rq-end').value = r.end_date; }
+    else { $('rq-amount').value = r.amount; $('rq-currency').value = r.currency; $('rq-vendor').value = r.vendor || ''; }
+  }
   syncRequestForm();
   $('request-dialog').showModal();
-});
+}
+$('new-request').addEventListener('click', () => openRequestForm());
 $('request-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const type = $('rq-type').value;
@@ -285,11 +356,17 @@ $('request-form').addEventListener('submit', async (e) => {
   $('rq-btn').disabled = true;
   $('rq-error').hidden = true;
   try {
-    const created = await post(`/api/workspaces/${ws.id}/requests`, body);
+    const saved = editing
+      ? await post(`/api/workspaces/${ws.id}/requests/${editing.id}/resubmit`, body)
+      : await post(`/api/workspaces/${ws.id}/requests`, body);
+    // Receipts picked in the form are uploaded once the request exists.
+    if (!editing && $('rq-files').files.length) {
+      try { await uploadFiles(saved.id, [...$('rq-files').files]); } catch (err) { alert(`The request was submitted, but a file wasn't attached: ${err.message}`); }
+    }
     $('request-dialog').close();
     showTab('requests');
     setScope('mine');
-    openRequest(created.id);
+    openRequest(saved.id);
   } catch (err) {
     $('rq-error').textContent = err.message;
     $('rq-error').hidden = false;
@@ -467,6 +544,10 @@ const AUDIT_TEXT = {
   'request.approved': (d) => (d.reason ? `auto-approved a request (${d.reason})` : `gave final approval${d.comment ? `: "${d.comment}"` : ''}`),
   'request.rejected': (d) => `rejected at the ${d.step} step: "${d.comment}"`,
   'request.cancelled': (d) => `cancelled "${d.title}"`,
+  'request.changes_requested': (d) => `sent a request back for changes at the ${d.step} step: "${d.comment}"`,
+  'request.resubmitted': (d) => `resubmitted "${d.title}" (round ${d.round})`,
+  'request.file_added': (d) => `attached ${d.filename}`,
+  'request.file_removed': (d) => `removed ${d.filename}`,
 };
 
 async function loadAudit() {

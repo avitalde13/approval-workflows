@@ -50,6 +50,7 @@ function createApp({
     res.set('X-Frame-Options', 'DENY');
     next();
   });
+  app.use('/api/workspaces/:id/requests/:requestId/files', express.json({ limit: '8mb' })); // receipts, base64
   app.use(express.json({ limit: '100kb' }));
   app.use(loadSession(pool));
 
