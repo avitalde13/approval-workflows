@@ -143,8 +143,8 @@ Safeguards:
 ### Install and run
 
 ```bash
-git clone https://github.com/avitalde13/approval-workflows.git
-cd approval-workflows
+git clone https://github.com/avitalde13/greenlight.git
+cd greenlight
 npm install
 cp .env.example .env
 npm run dev
@@ -202,7 +202,7 @@ npm test
 ## Project structure
 
 ```
-approval-workflows/
+greenlight/
 ├── migrations/          SQL schema, applied in order on startup
 ├── public/              Landing page, sign-in, app shell (HTML, CSS, JS), images and legal pages
 ├── src/

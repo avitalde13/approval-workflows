@@ -1,5 +1,5 @@
 {
-  "name": "approval-workflows",
+  "name": "greenlight",
   "version": "0.1.0",
   "description": "Multi-tenant approval and purchasing workflows: Google sign-in, approval chains, email notifications, roles, audit log and AI anomaly detection.",
   "main": "src/server.js",
