@@ -11,13 +11,15 @@
 //   POST  /api/workspaces/:id/departments    { name, budget_amount, budget_period }    (Admins)
 //   PATCH /api/workspaces/:id/departments/:deptId                                      (Admins)
 //   DELETE /api/workspaces/:id/departments/:deptId                                     (Admins)
+//   PUT   /api/workspaces/:id/slack          { webhook_url }                           (Admins; sends a test message)
+//   DELETE /api/workspaces/:id/slack                                                   (Admins)
 
 const express = require('express');
 const { requireUser } = require('../auth/sessions');
 const { requireMember } = require('../permissions');
 const { audit } = require('../audit');
 const { activateStep, awayInfo } = require('../routing');
-const { loadRequestInfo } = require('../notifier');
+const { loadRequestInfo, SLACK_RE } = require('../notifier');
 const { CURRENCIES, getFx, refreshRates, setRate } = require('../currency');
 const { budgetUsage } = require('../budgets');
 const { parseId } = require('../workspaces');
@@ -58,9 +60,12 @@ function hoursOrNull(v) {
 }
 
 async function loadSettings(pool, workspaceId) {
-  const { rows } = await pool.query('SELECT reminder_hours, escalate_hours, base_currency, vacation_days FROM workspaces WHERE id = $1', [workspaceId]);
+  const { rows } = await pool.query(
+    'SELECT reminder_hours, escalate_hours, base_currency, vacation_days, slack_webhook_url, demo_expires_at FROM workspaces WHERE id = $1', [workspaceId]);
+  const { slack_webhook_url: hook, demo_expires_at: demo, ...settings } = rows[0];
   const fx = await getFx(pool, workspaceId);
-  return { ...rows[0], currencies: CURRENCIES, rates: fx.list };
+  // The webhook URL is a secret: only its last characters are ever shown.
+  return { ...settings, currencies: CURRENCIES, rates: fx.list, slack: { connected: Boolean(hook), hint: hook ? `…${hook.slice(-6)}` : null, available: !demo } };
 }
 
 function settingsRoutes(pool, notifier, { fetchImpl = fetch } = {}) {
@@ -143,6 +148,37 @@ function settingsRoutes(pool, notifier, { fetchImpl = fetch } = {}) {
     } catch (err) {
       console.error('Rate refresh failed:', err.message);
       res.status(502).json({ error: "Couldn't reach the exchange rate service. Try again later, or enter rates by hand." });
+    }
+  });
+
+  // ---------- Slack ----------
+  router.put('/slack', requireMember(pool, 'admin'), async (req, res, next) => {
+    try {
+      const url = String(req.body?.webhook_url || '').trim();
+      if (!SLACK_RE.test(url) || url.length > 300) return res.status(400).json({ error: 'Paste a Slack incoming webhook URL (it starts with https://hooks.slack.com/services/).' });
+      const { rows: [w] } = await pool.query('SELECT name, demo_expires_at FROM workspaces WHERE id = $1', [req.workspaceId]);
+      if (w.demo_expires_at) return res.status(403).json({ error: 'Slack is turned off in the demo.' });
+      const previous = (await pool.query('SELECT slack_webhook_url FROM workspaces WHERE id = $1', [req.workspaceId])).rows[0].slack_webhook_url;
+      await pool.query('UPDATE workspaces SET slack_webhook_url = $1 WHERE id = $2', [url, req.workspaceId]);
+      const ok = await notifier.slack(req.workspaceId, `👋 Greenlight is connected. Approvals, decisions and budget alerts for *${w.name.replace(/[&<>]/g, '')}* will appear here.`);
+      if (!ok) {
+        await pool.query('UPDATE workspaces SET slack_webhook_url = $1 WHERE id = $2', [previous, req.workspaceId]);
+        return res.status(400).json({ error: "Slack didn't accept a test message with that URL. Check it and try again." });
+      }
+      await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'settings.slack_connected', entityType: 'workspace', entityId: req.workspaceId });
+      res.json(await loadSettings(pool, req.workspaceId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete('/slack', requireMember(pool, 'admin'), async (req, res, next) => {
+    try {
+      await pool.query('UPDATE workspaces SET slack_webhook_url = NULL WHERE id = $1', [req.workspaceId]);
+      await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'settings.slack_disconnected', entityType: 'workspace', entityId: req.workspaceId });
+      res.json(await loadSettings(pool, req.workspaceId));
+    } catch (err) {
+      next(err);
     }
   });
 

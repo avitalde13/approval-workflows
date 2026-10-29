@@ -1,4 +1,5 @@
-// Everything that tells people something happened: an in-app notification (the bell) plus an email.
+// Everything that tells people something happened: an in-app notification (the bell), an email,
+// and a message in the workspace's Slack channel when Slack is connected.
 // Nothing here ever blocks or undoes an action: failures are logged.
 
 const { config } = require('./config');
@@ -20,7 +21,30 @@ async function loadRequestInfo(db, requestId) {
   return r ? { ...r, amount: r.amount == null ? null : Number(r.amount) } : null;
 }
 
-function createNotifier({ pool, mailer }) {
+// Slack's mrkdwn: escape &, < and > in user text; links are <url|label>.
+const slackEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const fmtMoney = (amount, currency) => {
+  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount); } catch { return `${amount} ${currency}`; }
+};
+const SLACK_RE = /^https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9_\-/]+$/;
+
+function createNotifier({ pool, mailer, fetchImpl = fetch }) {
+  // Posts to the workspace's Slack channel. Returns true when Slack accepted the message.
+  async function slack(workspaceId, text) {
+    try {
+      const { rows: [w] } = await pool.query('SELECT slack_webhook_url FROM workspaces WHERE id = $1', [workspaceId]);
+      if (!w?.slack_webhook_url || !SLACK_RE.test(w.slack_webhook_url)) return false;
+      const res = await fetchImpl(w.slack_webhook_url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, unfurl_links: false }) });
+      if (!res.ok) console.error(`Slack message failed: ${res.status}`);
+      return res.ok;
+    } catch (err) {
+      console.error('Slack message failed:', err.message);
+      return false;
+    }
+  }
+  const slackLink = (request) => `<${requestLink(request.workspace_id, request.id)}|${slackEscape(request.title)}>`;
+  const slackAmount = (request) => (request.amount != null ? ` · ${fmtMoney(request.amount, request.currency)}` : '');
+
   async function email(to, message) {
     try {
       await mailer.send({ to, ...message });
@@ -53,6 +77,12 @@ function createNotifier({ pool, mailer }) {
       workspaceName: request.workspace_name, requesterName: request.requester_name, requestTitle: request.title,
       amount: request.amount, currency: request.currency, link: requestLink(request.workspace_id, request.id), flags, note, reminder: kind === 'reminder',
     }));
+    if (kind !== 'reminder') {
+      const { rows: [who] } = await pool.query('SELECT name FROM users WHERE id = $1', [approverId]);
+      const risky = insight && insight.risk_level !== 'low' ? ` · ⚠️ ${insight.risk_level === 'high' ? 'High risk' : 'Worth a look'}` : '';
+      await slack(request.workspace_id, `📝 *${slackEscape(request.requester_name)}* needs approval from *${slackEscape(who?.name || 'an approver')}*: ${slackLink(request)}${slackAmount(request)}${risky}`
+        + (note ? `\n_${slackEscape(note)}_` : ''));
+    }
   }
 
   // The requester hears about decisions on their request.
@@ -65,9 +95,19 @@ function createNotifier({ pool, mailer }) {
       workspaceName: request.workspace_name, requestTitle: request.title, status, actorName, comment,
       link: requestLink(request.workspace_id, request.id),
     }));
+    const icon = { approved: '✅', rejected: '❌', changes_requested: '↩️' }[status];
+    if (icon) {
+      await slack(request.workspace_id, `${icon} ${slackLink(request)}${slackAmount(request)} from *${slackEscape(request.requester_name)}* was `
+        + `${status === 'changes_requested' ? 'sent back for changes' : status}${actorName === 'Greenlight' ? '' : ` by *${slackEscape(actorName)}*`}`
+        + (comment ? `\n> ${slackEscape(comment)}` : ''));
+    }
   }
 
-  return { approvalNeeded, statusChanged, inApp };
+  async function budgetAlert(workspaceId, title) {
+    await slack(workspaceId, `💰 ${slackEscape(title)}`);
+  }
+
+  return { approvalNeeded, statusChanged, inApp, budgetAlert, slack };
 }
 
-module.exports = { createNotifier, loadRequestInfo, requestLink };
+module.exports = { createNotifier, loadRequestInfo, requestLink, SLACK_RE };

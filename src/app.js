@@ -38,7 +38,7 @@ function createApp({
   classifier = config.ai.enabled ? createClassifier({ model: config.ai.model }) : null,
 } = {}) {
   const app = express();
-  const notifier = createNotifier({ pool, mailer });
+  const notifier = createNotifier({ pool, mailer, fetchImpl });
   app.locals.notifier = notifier;
 
   // Background AI work. Tests call app.locals.waitForInsights() to wait for it.

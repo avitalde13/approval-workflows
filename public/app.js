@@ -499,7 +499,35 @@ async function loadSettings() {
   loadDepartments();
   $('set-vacation').value = s.vacation_days;
   $('vacation-msg').hidden = true;
+  renderSlack(s.slack);
 }
+
+function renderSlack(slack) {
+  $('slack-state').textContent = slack.connected ? `Connected (${slack.hint})` : 'Not connected';
+  $('slack-off').hidden = !slack.connected;
+  $('slack-url').value = '';
+  $('slack-url').disabled = !slack.available;
+  $('slack-save').disabled = !slack.available;
+  $('slack-save').textContent = slack.connected ? 'Replace and send a test' : 'Connect and send a test';
+  if (!slack.available) notice($('slack-msg'), 'Slack is turned off in the demo. Create your own workspace to connect it.', false);
+  else $('slack-msg').hidden = true;
+}
+$('slack-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('slack-save').disabled = true;
+  try {
+    const s = await send('PUT', `/api/workspaces/${ws.id}/slack`, { webhook_url: $('slack-url').value });
+    renderSlack(s.slack);
+    notice($('slack-msg'), 'Connected. Check your Slack channel for the test message.', true);
+  } catch (err) { notice($('slack-msg'), err.message, false); }
+  $('slack-save').disabled = false;
+});
+$('slack-off').addEventListener('click', async () => {
+  if (!confirm('Disconnect Slack?')) return;
+  const s = await send('DELETE', `/api/workspaces/${ws.id}/slack`);
+  renderSlack(s.slack);
+  notice($('slack-msg'), 'Slack disconnected.', true);
+});
 $('vacation-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
@@ -989,6 +1017,8 @@ const AUDIT_TEXT = {
   'member.away_set': (d) => `set out of office until ${fmtDay(d.until)}`,
   'member.away_cleared': () => 'is back in the office',
   'settings.updated': () => 'updated the workspace settings',
+  'settings.slack_connected': () => 'connected Slack',
+  'settings.slack_disconnected': () => 'disconnected Slack',
   'settings.rates_updated': (d) => (d.source === 'ecb' ? 'updated exchange rates from the ECB' : 'updated exchange rates'),
   'department.created': (d) => `created the ${d.name} department`,
   'department.updated': () => 'updated a department budget',

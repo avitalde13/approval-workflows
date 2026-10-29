@@ -197,6 +197,20 @@
           </div>
         </div>
         <div class="card settings-card">
+          <div class="card-head"><h2>Slack</h2><span class="muted" id="slack-state"></span></div>
+          <form class="settings-form" id="slack-form" novalidate>
+            <p class="muted">Post new approvals, decisions and budget alerts to a Slack channel. In Slack, create an
+              <a href="https://api.slack.com/messaging/webhooks" target="_blank" rel="noopener">incoming webhook</a> for the channel and paste its URL here.</p>
+            <div class="field"><label for="slack-url">Webhook URL</label>
+              <input type="password" id="slack-url" autocomplete="off" placeholder="https://hooks.slack.com/services/…"></div>
+            <p class="notice" id="slack-msg" hidden></p>
+            <div class="chain-actions">
+              <button class="btn btn-secondary" type="button" id="slack-off" hidden>Disconnect</button>
+              <button class="btn btn-primary" type="submit" id="slack-save">Connect and send a test</button>
+            </div>
+          </form>
+        </div>
+        <div class="card settings-card">
           <div class="card-head"><h2>Time off</h2></div>
           <form class="settings-form" id="vacation-form" novalidate>
             <p class="muted">Vacation days per calendar year for everyone. You can give individual people a different number on the Time off tab. Only business days (Monday to Friday) count.</p>
