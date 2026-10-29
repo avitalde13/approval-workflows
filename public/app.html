@@ -61,6 +61,7 @@
       <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab active" role="tab" data-tab="requests" type="button">Requests</button>
         <button class="tab manager-only" role="tab" data-tab="dashboard" type="button">Dashboard</button>
+        <button class="tab" role="tab" data-tab="timeoff" type="button">Time off</button>
         <button class="tab" role="tab" data-tab="members" type="button">Members</button>
         <button class="tab" role="tab" data-tab="chains" type="button">Approval chains</button>
         <button class="tab admin-only" role="tab" data-tab="audit" type="button">Audit log</button>
@@ -105,6 +106,28 @@
           <div class="card chart-card" id="chart-types"></div>
         </div>
         <div class="chart-tip" id="chart-tip" role="status" hidden></div>
+      </section>
+
+      <!-- Time off -->
+      <section class="tab-panel" id="tab-timeoff" hidden>
+        <div class="kpis" id="my-balance"></div>
+        <div class="card cal-card">
+          <div class="cal-head">
+            <button class="btn btn-secondary btn-small" id="cal-prev" type="button" aria-label="Previous month">‹</button>
+            <h2 id="cal-title"></h2>
+            <button class="btn btn-secondary btn-small" id="cal-next" type="button" aria-label="Next month">›</button>
+            <span class="cal-legend"><span class="pill pill-approved">Approved</span><span class="pill pill-pending">Waiting</span></span>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
+          <ul class="cal-list" id="cal-list"></ul>
+        </div>
+        <div class="card manager-only" id="balances-card" style="margin-top:18px">
+          <div class="card-head"><h2>Vacation balances</h2><span class="muted" id="balances-year"></span></div>
+          <table>
+            <thead><tr><th>Person</th><th>Days per year</th><th>Used</th><th>Waiting</th><th>Left</th></tr></thead>
+            <tbody id="balance-rows"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- Members -->
@@ -172,6 +195,15 @@
             </div>
             <p class="notice" id="rates-msg" hidden></p>
           </div>
+        </div>
+        <div class="card settings-card">
+          <div class="card-head"><h2>Time off</h2></div>
+          <form class="settings-form" id="vacation-form" novalidate>
+            <p class="muted">Vacation days per calendar year for everyone. You can give individual people a different number on the Time off tab. Only business days (Monday to Friday) count.</p>
+            <div class="row"><div class="field"><label for="set-vacation">Days per year</label><input type="text" inputmode="numeric" id="set-vacation" style="width:120px"></div></div>
+            <p class="notice" id="vacation-msg" hidden></p>
+            <button class="btn btn-primary" type="submit">Save</button>
+          </form>
         </div>
         <div class="card settings-card">
           <div class="card-head"><h2>Reminders and escalation</h2></div>
@@ -244,6 +276,7 @@
         <div class="field grow"><label for="rq-start">First day</label><input type="date" id="rq-start"></div>
         <div class="field grow"><label for="rq-end">Last day</label><input type="date" id="rq-end"></div>
       </div>
+      <p class="balance-hint dates" id="rq-balance" hidden></p>
       <div class="field">
         <label for="rq-desc">Details <span class="muted">(optional)</span></label>
         <textarea id="rq-desc" maxlength="2000" rows="3" placeholder="Why it's needed"></textarea>

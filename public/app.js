@@ -164,6 +164,7 @@ function showTab(name) {
   if (name === 'members') renderMembers();
   if (name === 'dashboard') loadDashboard();
   if (name === 'settings') loadSettings();
+  if (name === 'timeoff') loadTimeOff();
   if (name === 'chains') loadChains();
   if (name === 'audit') { auditBefore = null; $('audit-rows').replaceChildren(); loadAudit(); }
 }
@@ -325,10 +326,36 @@ function insightPanel(r) {
 }
 
 // New request form
+// Business days between two "YYYY-MM-DD" dates (inclusive).
+function businessDays(start, end) {
+  let n = 0;
+  for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86400000) {
+    const d = new Date(t).getUTCDay();
+    if (d !== 0 && d !== 6) n++;
+  }
+  return n;
+}
+let myBalance = null;
+function renderBalanceHint() {
+  const start = $('rq-start').value;
+  const end = $('rq-end').value;
+  const asked = start && end && end >= start ? businessDays(start, end) : null;
+  const parts = [];
+  if (myBalance) parts.push(`You have ${myBalance.left} of ${myBalance.allowance} vacation days left in ${myBalance.year}${myBalance.waiting ? ` (${myBalance.waiting} waiting for approval)` : ''}.`);
+  if (asked != null) parts.push(`This request: ${asked} business day${asked === 1 ? '' : 's'}.`);
+  $('rq-balance').textContent = parts.join(' ');
+  $('rq-balance').classList.toggle('over', Boolean(myBalance && asked != null && asked > myBalance.left));
+}
+$('rq-start').addEventListener('change', renderBalanceHint);
+$('rq-end').addEventListener('change', renderBalanceHint);
+
 function syncRequestForm() {
   const type = $('rq-type').value;
+  if (type === 'time_off') {
+    api(`/api/workspaces/${ws.id}/time-off/balance`).then((b) => { myBalance = b; renderBalanceHint(); }).catch(() => {});
+  }
   document.querySelectorAll('#request-form .money').forEach((el) => (el.hidden = type === 'time_off'));
-  document.querySelector('#request-form .dates').hidden = type !== 'time_off';
+  document.querySelectorAll('#request-form .dates').forEach((el) => (el.hidden = type !== 'time_off'));
   $('vendor-optional').hidden = type === 'purchase';
 }
 $('rq-type').addEventListener('change', syncRequestForm);
@@ -470,7 +497,16 @@ async function loadSettings() {
   $('reminders-msg').hidden = true;
   renderCurrency(s);
   loadDepartments();
+  $('set-vacation').value = s.vacation_days;
+  $('vacation-msg').hidden = true;
 }
+$('vacation-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await send('PATCH', `/api/workspaces/${ws.id}/settings`, { vacation_days: Number($('set-vacation').value) });
+    notice($('vacation-msg'), 'Saved.', true);
+  } catch (err) { notice($('vacation-msg'), err.message, false); }
+});
 
 // Budget meter: approved spend (solid) and waiting requests (lighter), with a status word so color isn't the only cue.
 function budgetMeter(d, currency) {
@@ -570,6 +606,70 @@ $('reminders-form').addEventListener('submit', async (e) => {
     notice($('reminders-msg'), 'Saved.', true);
   } catch (err) { notice($('reminders-msg'), err.message, false); }
 });
+
+// ---------- Time off ----------
+
+let calMonth = new Date().toISOString().slice(0, 7);
+const shiftMonth = (key, n) => { const [y, m] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7); };
+$('cal-prev').addEventListener('click', () => { calMonth = shiftMonth(calMonth, -1); loadCalendar(); });
+$('cal-next').addEventListener('click', () => { calMonth = shiftMonth(calMonth, 1); loadCalendar(); });
+
+async function loadTimeOff() {
+  const b = await api(`/api/workspaces/${ws.id}/time-off/balance`);
+  const tile = (label, value, sub) => h('div', { class: 'kpi' }, h('span', { class: 'kpi-label' }, label), h('strong', { class: 'kpi-value' }, value), sub && h('span', { class: 'kpi-sub' }, sub));
+  $('my-balance').replaceChildren(
+    tile(`Vacation days left in ${b.year}`, String(b.left), `of ${b.allowance} per year`),
+    tile('Used', String(b.used), 'approved business days'),
+    tile('Waiting for approval', String(b.waiting), 'business days requested'),
+    h('div', { class: 'kpi kpi-action' }, h('span', { class: 'kpi-label' }, 'Planning time off?'),
+      h('button', { class: 'btn btn-primary btn-small', type: 'button', onclick: () => { openRequestForm(); $('rq-type').value = 'time_off'; syncRequestForm(); } }, 'Request time off')));
+  loadCalendar();
+  if (RANK[ws.role] >= RANK.manager) loadBalances();
+}
+
+async function loadCalendar() {
+  const { entries, from } = await api(`/api/workspaces/${ws.id}/time-off/calendar?month=${calMonth}`);
+  $('cal-title').textContent = monthLabel(calMonth, true);
+  const first = new Date(`${from}T00:00:00Z`);
+  const days = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  const lead = (first.getUTCDay() + 6) % 7; // weeks start on Monday
+  const todayKey = today();
+  const cells = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => h('div', { class: 'cal-dow' }, d));
+  for (let i = 0; i < lead; i++) cells.push(h('div', { class: 'cal-day cal-empty' }));
+  for (let d = 1; d <= days; d++) {
+    const key = `${calMonth}-${String(d).padStart(2, '0')}`;
+    const dow = (lead + d - 1) % 7;
+    const out = entries.filter((e) => e.start_date <= key && e.end_date >= key);
+    const pill = (e) => h('span', { class: `pill pill-${e.status === 'approved' ? 'approved' : 'pending'}`, title: `${e.name}${e.title ? `: ${e.title}` : ''} (${e.status === 'approved' ? 'approved' : 'waiting'})` }, e.name.split(' ')[0]);
+    cells.push(h('div', { class: `cal-day${dow >= 5 ? ' cal-weekend' : ''}${key === todayKey ? ' cal-today' : ''}` },
+      h('span', { class: 'cal-num' }, String(d)),
+      ...out.slice(0, 3).map(pill),
+      out.length > 3 && h('span', { class: 'cal-more', title: out.slice(3).map((e) => e.name).join(', ') }, `+${out.length - 3} more`)));
+  }
+  $('cal-grid').replaceChildren(...cells);
+  // On small screens: a simple list instead of the grid.
+  $('cal-list').replaceChildren(...(entries.length ? entries.map((e) => h('li', {},
+    h('span', { class: `pill pill-${e.status === 'approved' ? 'approved' : 'pending'}` }, e.status === 'approved' ? 'Approved' : 'Waiting'),
+    h('strong', {}, e.name), h('span', { class: 'muted' }, ` ${fmtDay(e.start_date)} – ${fmtDay(e.end_date)}${e.title ? ` · ${e.title}` : ''}`)))
+    : [h('li', { class: 'muted' }, 'Nobody is out this month.')]));
+}
+
+async function loadBalances() {
+  const { balances } = await api(`/api/workspaces/${ws.id}/time-off/balances`);
+  const isAdmin = ws.role === 'admin';
+  $('balances-year').textContent = balances[0] ? String(balances[0].year) : '';
+  $('balance-rows').replaceChildren(...balances.map((b) => h('tr', {},
+    h('td', {}, b.name),
+    h('td', {}, isAdmin
+      ? h('input', { type: 'text', inputmode: 'numeric', value: String(b.allowance), class: 'allowance', 'aria-label': `Days per year for ${b.name}`, onchange: async (e) => {
+          try { await send('PATCH', `/api/workspaces/${ws.id}/time-off/allowance/${b.user_id}`, { vacation_days: e.target.value.trim() === '' ? null : Number(e.target.value) }); loadBalances(); }
+          catch (err) { alert(err.message); loadBalances(); }
+        } })
+      : String(b.allowance), b.custom ? h('small', { class: 'muted' }, ' custom') : ''),
+    h('td', {}, String(b.used)),
+    h('td', {}, String(b.waiting)),
+    h('td', {}, h('strong', { class: b.left < 0 ? 'neg' : '' }, String(b.left))))));
+}
 
 // ---------- Dashboard ----------
 
@@ -894,6 +994,7 @@ const AUDIT_TEXT = {
   'department.updated': () => 'updated a department budget',
   'department.deleted': (d) => `deleted the ${d.name} department`,
   'member.department_changed': (d) => `changed ${d.email}'s department`,
+  'member.allowance_changed': (d) => `set a vacation allowance of ${d.vacation_days ?? 'the default'} days`,
   'request.file_removed': (d) => `removed ${d.filename}`,
 };
 

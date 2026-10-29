@@ -81,9 +81,9 @@ test('overlapping and very long time off is flagged', async (t) => {
   const { people, base } = await company(app, 'Leave');
   await people.eli.post(base, { type: 'time_off', title: 'Summer trip', start_date: '2027-07-01', end_date: '2027-07-10' });
   const overlap = (await people.eli.post(base, { type: 'time_off', title: 'Wedding', start_date: '2027-07-08', end_date: '2027-07-12' })).body;
-  assert.deepEqual(codes(overlap.insight), ['overlapping_time_off']);
+  assert.deepEqual(codes(overlap.insight), ['overlapping_time_off'], '7 + 3 business days fit in the 12-day allowance');
   const long = (await people.eli.post(base, { type: 'time_off', title: 'Sabbatical', start_date: '2027-09-01', end_date: '2027-10-15' })).body;
-  assert.deepEqual(codes(long.insight), ['long_time_off']);
+  assert.deepEqual(codes(long.insight), ['long_time_off', 'over_balance']);
 });
 
 test('approvers see flags in the email and on the request; the employee requester does not', async (t) => {

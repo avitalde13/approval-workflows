@@ -17,6 +17,7 @@ const { createMailer } = require('./email/mailer');
 const { reportRoutes } = require('./routes/reports');
 const { createNotifier } = require('./notifier');
 const { settingsRoutes } = require('./routes/settings');
+const { timeOffRoutes } = require('./routes/timeoff');
 const { notificationRoutes } = require('./routes/notifications');
 const { escapeHtml } = require('./email/templates');
 
@@ -70,6 +71,7 @@ function createApp({
   app.use('/api/workspaces/:id/requests', sameOriginJsonOnly, requestRoutes(pool, notifier, { classifier, track }));
   app.use('/api/workspaces/:id/audit-log', sameOriginJsonOnly, auditRoutes(pool));
   app.use('/api/workspaces/:id/reports', sameOriginJsonOnly, reportRoutes(pool));
+  app.use('/api/workspaces/:id/time-off', sameOriginJsonOnly, timeOffRoutes(pool));
   app.use('/api/workspaces/:id', sameOriginJsonOnly, settingsRoutes(pool, notifier, { fetchImpl }));
   app.use('/api/notifications', sameOriginJsonOnly, notificationRoutes(pool));
   app.use('/api', sameOriginJsonOnly, apiRoutes(pool));

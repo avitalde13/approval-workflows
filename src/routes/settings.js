@@ -58,7 +58,7 @@ function hoursOrNull(v) {
 }
 
 async function loadSettings(pool, workspaceId) {
-  const { rows } = await pool.query('SELECT reminder_hours, escalate_hours, base_currency FROM workspaces WHERE id = $1', [workspaceId]);
+  const { rows } = await pool.query('SELECT reminder_hours, escalate_hours, base_currency, vacation_days FROM workspaces WHERE id = $1', [workspaceId]);
   const fx = await getFx(pool, workspaceId);
   return { ...rows[0], currencies: CURRENCIES, rates: fx.list };
 }
@@ -88,6 +88,11 @@ function settingsRoutes(pool, notifier, { fetchImpl = fetch } = {}) {
       const next_ = { ...(await loadSettings(pool, req.workspaceId)), ...changes };
       if (next_.reminder_hours && next_.escalate_hours && next_.escalate_hours <= next_.reminder_hours) {
         return res.status(400).json({ error: 'Escalation should come after the reminder.' });
+      }
+      if ('vacation_days' in body) {
+        const d = Number(body.vacation_days);
+        if (!Number.isInteger(d) || d < 0 || d > 365) return res.status(400).json({ error: 'Vacation days must be a whole number from 0 to 365.' });
+        changes.vacation_days = d;
       }
       if ('base_currency' in body) {
         if (!CURRENCIES.includes(body.base_currency)) return res.status(400).json({ error: `Base currency must be one of ${CURRENCIES.join(', ')}.` });

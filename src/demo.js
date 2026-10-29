@@ -70,6 +70,8 @@ const REQUESTS = [
   { by: 'sam', type: 'purchase', title: 'External monitor', amount: 389, vendor: 'Dell', daysAgo: 22, decisions: ['approve'] },
   { by: 'noa', type: 'expense', title: 'Team offsite catering', amount: 1280, vendor: 'Green Kitchen Catering', daysAgo: 16,
     decisions: ['approve', ['reject', 'Please split this by event and attach the receipts.']] },
+  { by: 'priya', type: 'time_off', title: 'Visiting family', start: -4, end: -2, daysAgo: 20, decisions: ['approve'] },
+  { by: 'noa', type: 'time_off', title: 'Long weekend', start: 4, end: 5, daysAgo: 14, decisions: ['approve'] },
   { by: 'maya', type: 'expense', title: 'Hotel for the design conference in Berlin', amount: 620, currency: 'EUR', vendor: 'Motel One', daysAgo: 12,
     decisions: ['approve', 'approve'], receipt: true },
   { by: 'maya', type: 'purchase', title: 'Conference ticket: Config 2026', amount: 1199, vendor: 'Figma', daysAgo: 9, decisions: ['approve'] },
@@ -77,6 +79,7 @@ const REQUESTS = [
     decisions: [['changes', 'Please attach the receipt so Finance can file it.']] },
   { by: 'daniel', type: 'time_off', title: 'Family vacation', start: 24, end: 30, daysAgo: 6, decisions: [] },
   { by: 'sam', type: 'purchase', title: 'Standing desk', amount: 649, vendor: 'Fully', daysAgo: 4, decisions: [] },
+  { by: 'sam', type: 'time_off', title: 'Moving apartments', start: 9, end: 11, daysAgo: 3, decisions: [] },
   { by: 'noa', type: 'purchase', title: 'LinkedIn ads: November campaign', amount: 4950, vendor: 'LinkedIn', daysAgo: 3, decisions: [] },
   { by: 'sam', type: 'purchase', title: 'External monitor', amount: 389, vendor: 'Dell', daysAgo: 2, decisions: [] },
   { by: 'sam', type: 'purchase', title: 'Cloud GPU credits for the ML prototype', amount: 12400, vendor: 'Lambda Labs', daysAgo: 1,
@@ -227,7 +230,7 @@ async function createDemo(pool) {
   }
   const started = new Date(Date.now() - 365 * DAY);
   const { rows: [ws] } = await pool.query(
-    'INSERT INTO workspaces (name, slug, created_by, demo_expires_at, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+    'INSERT INTO workspaces (name, slug, created_by, demo_expires_at, created_at, vacation_days) VALUES ($1, $2, $3, $4, $5, 15) RETURNING id',
     ['Northwind Studio', `northwind-demo-${tag}`, ids.alex, expiresAt, started]
   );
   for (const p of PEOPLE) {

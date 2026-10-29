@@ -5,6 +5,7 @@
 
 const { budgetUsage } = require('../budgets');
 const { getFx, toBase } = require('../currency');
+const { balances, businessDays } = require('../timeoff');
 
 const DAY = 24 * 60 * 60 * 1000;
 const median = (xs) => {
@@ -119,6 +120,15 @@ async function detectTimeOff(db, request) {
   );
   const overlap = rows.find((r) => toDay(r.start_date) <= end && toDay(r.end_date) >= start);
   if (overlap) flags.push({ code: 'overlapping_time_off', severity: 'high', message: `Overlaps time off request #${overlap.id}.` });
+
+  // More days than are left this year (counting approved and waiting time off).
+  const year = Number(start.slice(0, 4));
+  const [balance] = await balances(db, request.workspace_id, { year, userIds: [request.requester_id], excludeRequestId: request.id });
+  const asked = businessDays(start, end, year);
+  if (balance && asked > balance.left) {
+    flags.push({ code: 'over_balance', severity: 'medium',
+      message: `Takes ${asked} business day(s), but only ${Math.max(0, balance.left)} of ${balance.allowance} are left in ${year}.` });
+  }
   return flags;
 }
 
