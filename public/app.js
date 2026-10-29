@@ -50,6 +50,7 @@ function money(amount, currency) {
   try { return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount); } catch { return `${amount} ${currency}`; }
 }
 const amountOrDates = (r) => (r.type === 'time_off' ? `${fmtDay(r.start_date)} – ${fmtDay(r.end_date)}` : money(r.amount, r.currency));
+const today = () => new Date().toISOString().slice(0, 10);
 const badge = (cls, text) => h('span', { class: `badge ${cls}` }, text);
 const roleBadge = (role) => h('span', { class: `role role-${role}` }, role);
 
@@ -123,6 +124,7 @@ async function showWorkspace(id) {
   document.querySelectorAll('.admin-only').forEach((el) => (el.hidden = ws.role !== 'admin'));
   document.querySelectorAll('.manager-only').forEach((el) => (el.hidden = RANK[ws.role] < RANK.manager));
   renderDemoBar();
+  renderAway();
   showTab('requests');
   setScope(ws.demo_expires_at && ws.role !== 'employee' ? 'to_approve' : 'mine');
   refreshApproveCount();
@@ -161,6 +163,7 @@ function showTab(name) {
   document.querySelectorAll('.tab-panel').forEach((p) => (p.hidden = p.id !== `tab-${name}`));
   if (name === 'members') renderMembers();
   if (name === 'dashboard') loadDashboard();
+  if (name === 'settings') loadSettings();
   if (name === 'chains') loadChains();
   if (name === 'audit') { auditBefore = null; $('audit-rows').replaceChildren(); loadAudit(); }
 }
@@ -276,6 +279,9 @@ async function openRequest(id) {
       h('span', { class: 'dot' }),
       h('div', {},
         h('strong', {}, a.step_name), ' ', h('span', { class: 'muted' }, a.approver_name ? `· ${a.approver_name}` : ''),
+        a.reassigned_from_name && h('div', { class: 'step-status' }, a.reassigned_reason === 'escalated'
+          ? `Moved from ${a.reassigned_from_name}, who didn't answer in time`
+          : `On behalf of ${a.reassigned_from_name} (out of office)`),
         h('div', { class: 'step-status' }, STEP_LABEL[a.status], a.decided_at && a.status !== 'skipped' ? ` · ${timeFmt.format(new Date(a.decided_at))}` : ''),
         a.comment && h('div', { class: 'step-comment' }, a.comment),
       ))))),
@@ -374,6 +380,100 @@ $('request-form').addEventListener('submit', async (e) => {
   } finally {
     $('rq-btn').disabled = false;
   }
+});
+
+// ---------- Notifications (the bell) ----------
+
+const ago = (iso) => {
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return s < 7 * 86400 ? `${Math.floor(s / 86400)} d ago` : dateFmt.format(new Date(iso));
+};
+async function loadNotifications() {
+  let data;
+  try { data = await api('/api/notifications'); } catch { return; }
+  $('bell-count').textContent = data.unread > 9 ? '9+' : data.unread;
+  $('bell-count').hidden = !data.unread;
+  $('bell').setAttribute('aria-label', `Notifications (${data.unread} unread)`);
+  const many = me && me.workspaces.length > 1;
+  $('bell-list').replaceChildren(...(data.items.length ? data.items.map((n) => h('li', {},
+    h('button', { class: `bell-item${n.read_at ? '' : ' unread'}`, type: 'button', onclick: async () => {
+      if (!n.read_at) await post('/api/notifications/read', { ids: [n.id] }).catch(() => {});
+      $('bell-panel').hidden = true;
+      $('bell').setAttribute('aria-expanded', 'false');
+      if (n.workspace_id !== ws?.id) await load(n.workspace_id);
+      if (n.request_id) openRequest(n.request_id);
+      loadNotifications();
+    } },
+      h('span', { class: 'bell-title' }, n.title),
+      n.body && h('span', { class: 'bell-body' }, n.body),
+      h('span', { class: 'bell-meta' }, ago(n.created_at), many ? ` · ${n.workspace_name}` : '')))) : [h('li', { class: 'bell-empty' }, "You're all caught up.")]));
+}
+$('bell').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = $('bell-panel').hidden;
+  $('bell-panel').hidden = !open;
+  $('bell').setAttribute('aria-expanded', String(open));
+  if (open) loadNotifications();
+});
+$('bell-panel').addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('click', () => { $('bell-panel').hidden = true; $('bell').setAttribute('aria-expanded', 'false'); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('bell-panel').hidden = true; });
+$('bell-read-all').addEventListener('click', async () => { await post('/api/notifications/read').catch(() => {}); loadNotifications(); });
+setInterval(() => { if (!document.hidden) loadNotifications(); }, 60_000);
+
+// ---------- Out of office ----------
+
+function renderAway() {
+  const mine = ws.members.find((m) => m.id === me.user.id);
+  const away = mine?.away_until && mine.away_until >= today();
+  const delegate = ws.members.find((m) => m.id === mine?.delegate_id);
+  $('away-status').replaceChildren(h('button', { class: 'link-btn', type: 'button', onclick: openAway },
+    away ? `Out of office until ${fmtDay(mine.away_until)} (${delegate?.name || 'someone'} approves)` : 'Set out of office'));
+}
+function openAway() {
+  const mine = ws.members.find((m) => m.id === me.user.id);
+  $('away-error').hidden = true;
+  $('away-from').value = mine.away_from || today();
+  $('away-until').value = mine.away_until || '';
+  $('away-delegate').replaceChildren(new Option('Choose a person', ''), ...ws.members.filter((m) => m.id !== me.user.id)
+    .map((m) => new Option(`${m.name} (${m.role})`, m.id, false, m.id === mine.delegate_id)));
+  $('away-clear').hidden = !mine.away_until;
+  $('away-dialog').showModal();
+}
+$('away-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    const res = await send('PUT', `/api/workspaces/${ws.id}/away`, { away_from: $('away-from').value || null, away_until: $('away-until').value, delegate_id: Number($('away-delegate').value) || null });
+    $('away-dialog').close();
+    if (res.moved) alert(`${res.moved} waiting approval(s) moved to your delegate.`);
+    await showWorkspace(ws.id);
+  } catch (err) { $('away-error').textContent = err.message; $('away-error').hidden = false; }
+});
+$('away-clear').addEventListener('click', async () => {
+  await send('DELETE', `/api/workspaces/${ws.id}/away`).catch(() => {});
+  $('away-dialog').close();
+  await showWorkspace(ws.id);
+});
+
+// ---------- Settings (Admins) ----------
+
+async function loadSettings() {
+  const s = await api(`/api/workspaces/${ws.id}/settings`);
+  const pick = (sel, v) => { const val = v == null ? '' : String(v); if (![...sel.options].some((o) => o.value === val)) sel.append(new Option(`${v} hours`, val)); sel.value = val; };
+  pick($('set-remind'), s.reminder_hours);
+  pick($('set-escalate'), s.escalate_hours);
+  $('reminders-msg').hidden = true;
+}
+$('reminders-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const v = (id) => ($(id).value ? Number($(id).value) : null);
+  try {
+    await send('PATCH', `/api/workspaces/${ws.id}/settings`, { reminder_hours: v('set-remind'), escalate_hours: v('set-escalate') });
+    notice($('reminders-msg'), 'Saved.', true);
+  } catch (err) { notice($('reminders-msg'), err.message, false); }
 });
 
 // ---------- Dashboard ----------
@@ -547,7 +647,8 @@ function renderMembers() {
         } }, 'Remove')
       : '';
     return h('tr', {},
-      h('td', {}, h('div', { class: 'person' }, avatarEl(m), h('div', {}, h('strong', {}, m.name + (m.id === me.user.id ? ' (you)' : '')), h('small', {}, m.email)))),
+      h('td', {}, h('div', { class: 'person' }, avatarEl(m), h('div', {}, h('strong', {}, m.name + (m.id === me.user.id ? ' (you)' : '')), h('small', {}, m.email),
+        m.away_until && m.away_until >= today() && h('small', { class: 'away-tag' }, `Away ${m.away_from ? `${fmtDay(m.away_from)} – ` : 'until '}${fmtDay(m.away_until)} · ${nameOf(m.delegate_id)} approves`)))),
       h('td', {}, roleCell),
       h('td', {}, managerCell),
       isAdmin && h('td', { style: 'text-align:right' }, remove));
@@ -677,6 +778,10 @@ const AUDIT_TEXT = {
   'request.changes_requested': (d) => `sent a request back for changes at the ${d.step} step: "${d.comment}"`,
   'request.resubmitted': (d) => `resubmitted "${d.title}" (round ${d.round})`,
   'request.file_added': (d) => `attached ${d.filename}`,
+  'request.escalated': (d) => `moved the ${d.step} step on: ${d.from} hadn't answered in ${d.hours} hours`,
+  'member.away_set': (d) => `set out of office until ${fmtDay(d.until)}`,
+  'member.away_cleared': () => 'is back in the office',
+  'settings.updated': () => 'updated the workspace settings',
   'request.file_removed': (d) => `removed ${d.filename}`,
 };
 
@@ -733,6 +838,7 @@ $('logout').addEventListener('click', async () => {
   const linkWs = Number(params.get('ws')) || null;
   const linkRequest = Number(params.get('request')) || null;
   await load(linkWs);
+  loadNotifications();
   if (linkRequest && ws) {
     history.replaceState(null, '', '/app');
     openRequest(linkRequest);

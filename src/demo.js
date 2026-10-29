@@ -134,9 +134,10 @@ async function seedRequest(db, workspaceId, ids, spec) {
     const status = s.status === 'waiting' && first ? 'pending' : s.status;
     if (s.status === 'waiting') first = false;
     await db.query(
-      `INSERT INTO request_approvals (request_id, position, step_name, approver_id, status, comment, decided_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [requestId, s.position, s.name, s.approver_id, status, s.note || null, s.status === 'skipped' ? createdAt : null]
+      `INSERT INTO request_approvals (request_id, position, step_name, approver_id, status, comment, decided_at, pending_since)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [requestId, s.position, s.name, s.approver_id, status, s.note || null, s.status === 'skipped' ? createdAt : null,
+        status === 'pending' ? createdAt : null]
     );
   }
   await insertAudit(db, { workspaceId, actorId: requesterId, action: 'request.submitted', entityId: requestId, at: createdAt,
@@ -169,7 +170,7 @@ async function seedRequest(db, workspaceId, ids, spec) {
     if (verdict === 'approve') {
       ({ rows: [next] } = await db.query(
         "SELECT id, step_name FROM request_approvals WHERE request_id = $1 AND status = 'waiting' ORDER BY position LIMIT 1", [requestId]));
-      if (next) await db.query("UPDATE request_approvals SET status = 'pending' WHERE id = $1", [next.id]);
+      if (next) await db.query("UPDATE request_approvals SET status = 'pending', pending_since = $1 WHERE id = $2", [at, next.id]);
       else final = 'approved';
     } else {
       final = verdict === 'reject' ? 'rejected' : null;
@@ -180,6 +181,29 @@ async function seedRequest(db, workspaceId, ids, spec) {
     await insertAudit(db, { workspaceId, actorId: step.approver_id, entityId: requestId, at,
       action: { reject: 'request.rejected', changes: 'request.changes_requested' }[verdict] || (final ? 'request.approved' : 'request.step_approved'),
       details: { step: step.step_name, comment, next_step: next?.step_name || null } });
+  }
+}
+
+// The bell: what's waiting for each approver, and recent decisions for requesters (older ones already read).
+async function seedNotifications(db, workspaceId) {
+  const { rows: waiting } = await db.query(
+    `SELECT a.approver_id, r.id, r.title, r.created_at, u.name FROM request_approvals a
+       JOIN requests r ON r.id = a.request_id JOIN users u ON u.id = r.requester_id
+      WHERE r.workspace_id = $1 AND a.status = 'pending' AND r.status = 'pending'`, [workspaceId]);
+  for (const w of waiting) {
+    await db.query(`INSERT INTO notifications (user_id, workspace_id, request_id, kind, title, created_at) VALUES ($1, $2, $3, 'approval_needed', $4, $5)`,
+      [w.approver_id, workspaceId, w.id, `${w.name} needs your approval: ${w.title}`, w.created_at]);
+  }
+  const { rows: decided } = await db.query(
+    `SELECT a.decided_at, a.status, r.id, r.title, r.requester_id, u.name FROM request_approvals a
+       JOIN requests r ON r.id = a.request_id JOIN users u ON u.id = a.approver_id
+      WHERE r.workspace_id = $1 AND a.status IN ('approved', 'rejected', 'returned') AND a.decided_at > $2`,
+    [workspaceId, new Date(Date.now() - 30 * DAY)]);
+  for (const d of decided) {
+    const verb = { approved: 'approved', rejected: 'rejected', returned: 'asked for changes to' }[d.status];
+    await db.query(`INSERT INTO notifications (user_id, workspace_id, request_id, kind, title, created_at, read_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [d.requester_id, workspaceId, d.id, `request_${d.status}`, `${d.name} ${verb} "${d.title}"`, d.decided_at,
+        d.decided_at < new Date(Date.now() - 10 * DAY) ? d.decided_at : null]);
   }
 }
 
@@ -217,6 +241,10 @@ async function createDemo(pool) {
     [ws.id, ids.alex, JSON.stringify({ name: 'Northwind Studio' }), started]
   );
   for (const spec of [...history(), ...REQUESTS]) await seedRequest(pool, ws.id, ids, spec);
+  await seedNotifications(pool, ws.id);
+  // Daniel's vacation is coming up: Priya approves for him while he's away.
+  await pool.query('UPDATE memberships SET away_from = $1, away_until = $2, delegate_id = $3 WHERE workspace_id = $4 AND user_id = $5',
+    [day(24), day(30), ids.priya, ws.id, ids.daniel]);
   return { workspaceId: ws.id, adminId: ids.alex, expiresAt };
 }
 

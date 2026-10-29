@@ -11,13 +11,12 @@
 //   DELETE /api/workspaces/:id/requests/:requestId/files/:fileId (requester, while not decided)
 
 const express = require('express');
-const { config } = require('../config');
 const { requireUser } = require('../auth/sessions');
 const { requireMember, canViewRequest } = require('../permissions');
 const { parseId } = require('../workspaces');
 const { REQUEST_TYPES, resolveApprovers, ChainError } = require('../chains');
 const { audit } = require('../audit');
-const templates = require('../email/templates');
+const { activateStep } = require('../routing');
 const { runRuleChecks, runAi, getInsight, asArray } = require('../insights');
 const { RANK } = require('../permissions');
 
@@ -38,7 +37,6 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TYPE_LABEL = { purchase: 'Purchase', expense: 'Expense', time_off: 'Time off' };
 
 const toDate = (v) => (v == null ? null : typeof v === 'string' ? v.slice(0, 10) : v.toISOString().slice(0, 10));
-const requestLink = (workspaceId, requestId) => `${config.appUrl}/app?ws=${workspaceId}&request=${requestId}`;
 
 function validate(body) {
   const type = body?.type;
@@ -86,8 +84,9 @@ async function loadRequest(db, workspaceId, requestId) {
 
 async function loadApprovals(db, requestId) {
   const { rows } = await db.query(
-    `SELECT a.id, a.position, a.round, a.step_name, a.approver_id, u.name AS approver_name, a.status, a.comment, a.decided_at
-       FROM request_approvals a LEFT JOIN users u ON u.id = a.approver_id
+    `SELECT a.id, a.position, a.round, a.step_name, a.approver_id, u.name AS approver_name, a.status, a.comment, a.decided_at,
+            a.reassigned_reason, ru.name AS reassigned_from_name
+       FROM request_approvals a LEFT JOIN users u ON u.id = a.approver_id LEFT JOIN users ru ON ru.id = a.reassigned_from
       WHERE a.request_id = $1 ORDER BY a.position`,
     [requestId]
   );
@@ -103,44 +102,36 @@ async function loadFiles(db, requestId) {
   return rows;
 }
 
-// Writes the approval rows for one round. The first active step becomes "pending".
-// Returns the first active step, or null when no step applies (the request is approved right away).
-async function insertApprovals(client, requestId, approvers, { round = 1, after = 0 } = {}) {
+// Writes the approval rows for one round and starts the first active step.
+// Returns { approverId, delegatedFrom } for that step, or null when no step applies (approved right away).
+async function insertApprovals(client, requestId, approvers, { round = 1, after = 0, workspaceId, requesterId }) {
   const firstActive = approvers.find((a) => a.status === 'waiting') || null;
+  let firstId = null;
   for (const a of approvers) {
-    await client.query(
+    const { rows } = await client.query(
       `INSERT INTO request_approvals (request_id, position, round, step_name, approver_id, status, comment, decided_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [requestId, after + a.position, round, a.name, a.approver_id, a === firstActive ? 'pending' : a.status, a.note || null,
-        a.status === 'skipped' ? new Date() : null]
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [requestId, after + a.position, round, a.name, a.approver_id, a.status, a.note || null, a.status === 'skipped' ? new Date() : null]
     );
+    if (a === firstActive) firstId = rows[0].id;
   }
-  return firstActive;
+  return firstActive ? activateStep(client, firstId, { workspaceId, requesterId, approverId: firstActive.approver_id }) : null;
+}
+
+// Explains a reassignment to the new approver.
+async function routeNote(db, routed) {
+  if (!routed?.delegatedFrom) return null;
+  const { rows } = await db.query('SELECT name FROM users WHERE id = $1', [routed.delegatedFrom]);
+  return `${rows[0]?.name || 'The usual approver'} is out of office and asked you to approve on their behalf.`;
 }
 
 // insights: { classifier: AI classifier or null, track(promise) } (track lets tests wait for background work)
-function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) => p }) {
+function requestRoutes(pool, notifier, insights = { classifier: null, track: (p) => p }) {
   const router = express.Router({ mergeParams: true });
   router.use(requireUser, requireMember(pool));
 
-  // Emails never block or undo an action; failures are logged.
-  async function notify(to, message) {
-    try {
-      await mailer.send({ to, ...message });
-    } catch (err) {
-      console.error('Notification email failed:', err.message);
-    }
-  }
-
-  async function notifyApprover(request, approverId) {
-    const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [approverId]);
-    if (!rows[0]) return;
-    const insight = await getInsight(pool, request.id);
-    const flags = insight ? [...insight.rule_flags, ...insight.ai_flags] : [];
-    await notify(rows[0].email, templates.approvalNeeded({
-      workspaceName: request.workspace_name, requesterName: request.requester_name, requestTitle: request.title,
-      amount: request.amount, currency: request.currency, link: requestLink(request.workspace_id, request.id), flags,
-    }));
+  async function notifyApprover(request, routed) {
+    await notifier.approvalNeeded(request, routed.approverId, { note: await routeNote(pool, routed) });
   }
 
   function startAi(requestId) {
@@ -148,10 +139,7 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
   }
 
   async function notifyRequester(request, status, actorName, comment) {
-    await notify(request.requester_email, templates.requestStatusChanged({
-      workspaceName: request.workspace_name, requestTitle: request.title, status, actorName, comment,
-      link: requestLink(request.workspace_id, request.id),
-    }));
+    await notifier.statusChanged(request, status, actorName, comment);
   }
 
   // ---------- Submit ----------
@@ -180,7 +168,7 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
           data.start_date, data.end_date, autoApproved ? 'approved' : 'pending', autoApproved ? new Date() : null]
       );
       requestId = rows[0].id;
-      firstActive = await insertApprovals(client, requestId, approvers);
+      firstActive = await insertApprovals(client, requestId, approvers, { workspaceId: req.workspaceId, requesterId: req.user.id });
       await audit(client, {
         workspaceId: req.workspaceId, actorId: req.user.id, action: 'request.submitted', entityType: 'request', entityId: requestId,
         details: { type: data.type, title: data.title, amount: data.amount, currency: data.currency, vendor: data.vendor,
@@ -204,7 +192,7 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
     }
     startAi(requestId);
     const request = await loadRequest(pool, req.workspaceId, requestId);
-    if (firstActive) await notifyApprover(request, firstActive.approver_id);
+    if (firstActive) await notifyApprover(request, firstActive);
     else await notifyRequester(request, 'approved', 'Greenlight');
     const { requester_email: _hidden, ...created } = request;
     res.status(201).json({ ...created, approvals: await loadApprovals(pool, requestId), insight: await getInsight(pool, requestId) });
@@ -335,7 +323,7 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
         if (decision === 'approve') {
           nextStep = approvals.find((a) => a.position > current.position && a.status === 'waiting') || null;
           if (nextStep) {
-            await client.query("UPDATE request_approvals SET status = 'pending' WHERE id = $1", [nextStep.id]);
+            nextStep.routed = await activateStep(client, nextStep.id, { workspaceId: req.workspaceId, requesterId: request.requester_id, approverId: nextStep.approver_id });
           } else {
             finalStatus = 'approved';
           }
@@ -367,7 +355,7 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
       if (decision === 'request_changes') {
         await notifyRequester(request, 'changes_requested', req.user.name, comment);
       } else if (nextStep) {
-        await notifyApprover(request, nextStep.approver_id);
+        await notifyApprover(request, nextStep.routed);
         await notifyRequester(request, 'advanced', req.user.name, comment || null);
       } else {
         await notifyRequester(request, finalStatus, req.user.name, comment || null);
@@ -429,7 +417,8 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
           return res.status(409).json({ error: 'This request was already resubmitted.' });
         }
         const { rows: [last] } = await client.query('SELECT MAX(position) AS p FROM request_approvals WHERE request_id = $1', [request.id]);
-        firstActive = await insertApprovals(client, request.id, approvers, { round, after: Number(last.p) || 0 });
+        firstActive = await insertApprovals(client, request.id, approvers,
+          { round, after: Number(last.p) || 0, workspaceId: req.workspaceId, requesterId: req.user.id });
         await audit(client, {
           workspaceId: req.workspaceId, actorId: req.user.id, action: 'request.resubmitted', entityType: 'request', entityId: request.id,
           details: { title: data.title, amount: data.amount, currency: data.currency, round },
@@ -447,7 +436,7 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
       await runRuleChecks(pool, request.id, { aiEnabled: Boolean(insights.classifier) }).catch((err) => console.error('Rule checks failed:', err));
       startAi(request.id);
       const updated = await loadRequest(pool, req.workspaceId, request.id);
-      if (firstActive) await notifyApprover(updated, firstActive.approver_id);
+      if (firstActive) await notifyApprover(updated, firstActive);
       else await notifyRequester(updated, 'approved', 'Greenlight');
       res.json({ ...updated, requester_email: undefined, approvals: await loadApprovals(pool, request.id) });
     } catch (err) {
@@ -546,4 +535,4 @@ function requestRoutes(pool, mailer, insights = { classifier: null, track: (p) =
   return router;
 }
 
-module.exports = { requestRoutes };
+module.exports = { requestRoutes, insertApprovals };

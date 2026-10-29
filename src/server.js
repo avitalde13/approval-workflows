@@ -3,6 +3,7 @@ const { config, assertProductionConfig } = require('./config');
 const { createPool, migrate } = require('./db');
 const { createApp } = require('./app');
 const { cleanupDemos } = require('./demo');
+const { runReminders } = require('./reminders');
 
 async function main() {
   assertProductionConfig();
@@ -15,7 +16,11 @@ async function main() {
   const cleanup = () => cleanupDemos(pool).catch((err) => console.error('Demo cleanup failed:', err.message));
   cleanup();
   setInterval(cleanup, 60 * 60 * 1000).unref();
-  createApp({ pool }).listen(config.port, () => console.log(`Greenlight running on ${config.appUrl}`));
+  const app = createApp({ pool });
+  // Reminders and escalations for slow approvals, every 15 minutes.
+  const remind = () => runReminders(pool, app.locals.notifier).catch((err) => console.error('Reminders failed:', err.message));
+  setInterval(remind, 15 * 60 * 1000).unref();
+  app.listen(config.port, () => console.log(`Greenlight running on ${config.appUrl}`));
 }
 
 main().catch((err) => {

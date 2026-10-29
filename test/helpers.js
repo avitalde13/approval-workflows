@@ -13,7 +13,7 @@ async function startApp({ fetchImpl, mailer = createMailer({ provider: 'console'
   const server = http.createServer(expressApp);
   await new Promise((resolve) => server.listen(0, resolve));
   const base = `http://localhost:${server.address().port}`;
-  return { pool, base, mailer, waitForInsights: expressApp.locals.waitForInsights, close: () => new Promise((resolve) => server.close(resolve)) };
+  return { pool, base, mailer, notifier: expressApp.locals.notifier, waitForInsights: expressApp.locals.waitForInsights, close: () => new Promise((resolve) => server.close(resolve)) };
 }
 
 // Acts like one browser: remembers cookies between requests, never follows redirects.

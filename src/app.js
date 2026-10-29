@@ -15,6 +15,9 @@ const { auditRoutes } = require('./routes/audit');
 const { createClassifier } = require('./insights/ai');
 const { createMailer } = require('./email/mailer');
 const { reportRoutes } = require('./routes/reports');
+const { createNotifier } = require('./notifier');
+const { settingsRoutes } = require('./routes/settings');
+const { notificationRoutes } = require('./routes/notifications');
 const { escapeHtml } = require('./email/templates');
 
 // Blocks cross-site form posts (CSRF): state-changing requests must be JSON and come from our own origin.
@@ -34,6 +37,8 @@ function createApp({
   classifier = config.ai.enabled ? createClassifier({ model: config.ai.model }) : null,
 } = {}) {
   const app = express();
+  const notifier = createNotifier({ pool, mailer });
+  app.locals.notifier = notifier;
 
   // Background AI work. Tests call app.locals.waitForInsights() to wait for it.
   const pending = new Set();
@@ -62,9 +67,11 @@ function createApp({
   app.use('/api/invitations', sameOriginJsonOnly, invites.accept);
   app.use('/api/workspaces/:id/members', sameOriginJsonOnly, memberRoutes(pool));
   app.use('/api/workspaces/:id/approval-chains', sameOriginJsonOnly, chainRoutes(pool));
-  app.use('/api/workspaces/:id/requests', sameOriginJsonOnly, requestRoutes(pool, mailer, { classifier, track }));
+  app.use('/api/workspaces/:id/requests', sameOriginJsonOnly, requestRoutes(pool, notifier, { classifier, track }));
   app.use('/api/workspaces/:id/audit-log', sameOriginJsonOnly, auditRoutes(pool));
   app.use('/api/workspaces/:id/reports', sameOriginJsonOnly, reportRoutes(pool));
+  app.use('/api/workspaces/:id', sameOriginJsonOnly, settingsRoutes(pool, notifier));
+  app.use('/api/notifications', sameOriginJsonOnly, notificationRoutes(pool));
   app.use('/api', sameOriginJsonOnly, apiRoutes(pool));
 
   const page = (file) => (req, res) => res.sendFile(path.join(__dirname, '..', 'public', file));

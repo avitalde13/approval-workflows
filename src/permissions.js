@@ -31,11 +31,11 @@ function requireMember(pool, minRole = 'employee') {
   };
 }
 
-// Whether the signed-in user may see a request: requester, any approver in its chain,
+// Whether the signed-in user may see a request: requester, any approver in its chain (or the person it was reassigned from),
 // the requester's manager, or an Admin.
 async function canViewRequest(pool, { request, userId, role }) {
   if (role === 'admin' || request.requester_id === userId) return true;
-  const approver = await pool.query('SELECT 1 FROM request_approvals WHERE request_id = $1 AND approver_id = $2', [request.id, userId]);
+  const approver = await pool.query('SELECT 1 FROM request_approvals WHERE request_id = $1 AND (approver_id = $2 OR reassigned_from = $2)', [request.id, userId]);
   if (approver.rows.length) return true;
   const manager = await pool.query(
     'SELECT 1 FROM memberships WHERE workspace_id = $1 AND user_id = $2 AND manager_id = $3',

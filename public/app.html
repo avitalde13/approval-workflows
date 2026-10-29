@@ -13,6 +13,16 @@
     <div class="topbar-right">
       <select class="ws-select" id="ws-select" aria-label="Current workspace" hidden></select>
       <button class="btn btn-secondary hide-sm" id="new-ws" type="button" hidden>New workspace</button>
+      <div class="bell-wrap">
+        <button class="bell" id="bell" type="button" aria-label="Notifications" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 1112 0c0 5 2 6.5 2 6.5H4S6 14 6 9z"/><path d="M10 19a2 2 0 004 0"/></svg>
+          <span class="bell-count" id="bell-count" hidden></span>
+        </button>
+        <div class="bell-panel" id="bell-panel" hidden>
+          <div class="bell-head"><strong>Notifications</strong><button class="link-btn" id="bell-read-all" type="button">Mark all as read</button></div>
+          <ul class="bell-list" id="bell-list"></ul>
+        </div>
+      </div>
       <span class="avatar" id="avatar" title=""></span>
       <button class="btn btn-secondary" id="logout" type="button">Sign out</button>
     </div>
@@ -43,7 +53,7 @@
       <div class="page-head">
         <div>
           <h1 id="ws-name"></h1>
-          <p>Your role: <span class="role" id="ws-role"></span></p>
+          <p>Your role: <span class="role" id="ws-role"></span> · <span id="away-status"></span></p>
         </div>
         <button class="btn btn-primary" id="new-request" type="button">New request</button>
       </div>
@@ -54,6 +64,7 @@
         <button class="tab" role="tab" data-tab="members" type="button">Members</button>
         <button class="tab" role="tab" data-tab="chains" type="button">Approval chains</button>
         <button class="tab admin-only" role="tab" data-tab="audit" type="button">Audit log</button>
+        <button class="tab admin-only" role="tab" data-tab="settings" type="button">Settings</button>
       </nav>
 
       <!-- Requests -->
@@ -130,6 +141,24 @@
         <div id="chains"></div>
       </section>
 
+      <!-- Settings (Admins) -->
+      <section class="tab-panel" id="tab-settings" hidden>
+        <div class="card settings-card">
+          <div class="card-head"><h2>Reminders and escalation</h2></div>
+          <form class="settings-form" id="reminders-form" novalidate>
+            <p class="muted">When an approver doesn't answer, Greenlight reminds them, and later moves the step to their manager (or an Admin).</p>
+            <div class="row">
+              <div class="field grow"><label for="set-remind">Remind the approver after</label>
+                <select id="set-remind"><option value="">Never</option><option value="24">1 day</option><option value="48">2 days</option><option value="72">3 days</option><option value="168">1 week</option></select></div>
+              <div class="field grow"><label for="set-escalate">Move it on after</label>
+                <select id="set-escalate"><option value="">Never</option><option value="48">2 days</option><option value="96">4 days</option><option value="168">1 week</option><option value="336">2 weeks</option></select></div>
+            </div>
+            <p class="notice" id="reminders-msg" hidden></p>
+            <button class="btn btn-primary" type="submit">Save</button>
+          </form>
+        </div>
+      </section>
+
       <!-- Audit log -->
       <section class="tab-panel" id="tab-audit" hidden>
         <div class="card">
@@ -197,6 +226,25 @@
       <div class="dialog-actions">
         <button class="btn btn-secondary" type="button" data-close>Cancel</button>
         <button class="btn btn-primary" type="submit" id="rq-btn">Submit for approval</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Out of office -->
+  <dialog class="dialog" id="away-dialog">
+    <form id="away-form" novalidate>
+      <h2>Out of office</h2>
+      <p class="muted" style="margin-top:0">While you're away, requests that need your approval go to the person you pick. Anything already waiting moves to them right away.</p>
+      <div class="row">
+        <div class="field grow"><label for="away-from">First day</label><input type="date" id="away-from"></div>
+        <div class="field grow"><label for="away-until">Last day</label><input type="date" id="away-until"></div>
+      </div>
+      <div class="field"><label for="away-delegate">Approve on my behalf</label><select id="away-delegate"></select></div>
+      <p class="error" id="away-error" hidden></p>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" type="button" id="away-clear" hidden>I'm back</button>
+        <button class="btn btn-secondary" type="button" data-close>Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
       </div>
     </form>
   </dialog>
