@@ -20,7 +20,7 @@ function createMailer({ provider, from, fromName, brevoApiKey, resendApiKey }, {
       return { id: `console-${Date.now()}` };
     }
 
-    if (provider === 'none') return { id: null, skipped: true };
+    if (provider === 'none' || to.endsWith('@demo.greenlight.test')) return { id: null, skipped: true };
 
     if (provider === 'brevo') {
       const res = await fetchImpl('https://api.brevo.com/v3/smtp/email', {

@@ -5,6 +5,7 @@ const express = require('express');
 const { config } = require('../config');
 const { readCookie, sign, unsign } = require('./cookies');
 const { createSession, setSessionCookie, destroySession } = require('./sessions');
+const { createDemo } = require('../demo');
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -135,6 +136,45 @@ function authRoutes(pool, { fetchImpl = fetch, stateSecret }) {
         : (await pool.query('INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id', [email, name])).rows[0].id;
       setSessionCookie(req, res, await createSession(pool, userId));
       res.json({ ok: true, next: safeNext(req.body?.next) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Live demo: a private sample company, signed in as its Admin. Limited per IP address.
+  const demoStarts = new Map(); // ip -> timestamps in the last hour
+  router.post('/demo', async (req, res, next) => {
+    const now = Date.now();
+    const recent = (demoStarts.get(req.ip) || []).filter((t) => now - t < 60 * 60 * 1000);
+    if (recent.length >= 20) return res.status(429).json({ error: 'Too many demos started. Please try again later.' });
+    demoStarts.set(req.ip, [...recent, now]);
+    if (demoStarts.size > 10_000) demoStarts.clear();
+    try {
+      const demo = await createDemo(pool);
+      if (req.user) await destroySession(pool, req, res);
+      setSessionCookie(req, res, await createSession(pool, demo.adminId, demo.expiresAt));
+      res.json({ ok: true, next: `/app?ws=${demo.workspaceId}` });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // In a demo, view the app as another person of the same sample company.
+  router.post('/demo/switch', async (req, res, next) => {
+    if (!req.user?.is_demo) return res.status(403).json({ error: 'Only available in the demo.' });
+    try {
+      const { rows } = await pool.query(
+        `SELECT w.demo_expires_at FROM memberships mine
+           JOIN memberships theirs ON theirs.workspace_id = mine.workspace_id
+           JOIN workspaces w ON w.id = mine.workspace_id
+           JOIN users u ON u.id = theirs.user_id
+          WHERE mine.user_id = $1 AND theirs.user_id = $2 AND u.is_demo = TRUE AND w.demo_expires_at > NOW()`,
+        [req.user.id, Number(req.body?.user_id) || 0]
+      );
+      if (!rows[0]) return res.status(404).json({ error: 'Person not found in this demo.' });
+      await destroySession(pool, req, res);
+      setSessionCookie(req, res, await createSession(pool, Number(req.body.user_id), new Date(rows[0].demo_expires_at)));
+      res.json({ ok: true });
     } catch (err) {
       next(err);
     }

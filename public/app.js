@@ -104,10 +104,31 @@ async function showWorkspace(id) {
   $('ws-role').className = `role role-${ws.role}`;
   document.querySelectorAll('.admin-only').forEach((el) => (el.hidden = ws.role !== 'admin'));
   document.querySelectorAll('.manager-only').forEach((el) => (el.hidden = RANK[ws.role] < RANK.manager));
+  renderDemoBar();
   showTab('requests');
-  setScope('mine');
+  setScope(ws.demo_expires_at && ws.role !== 'employee' ? 'to_approve' : 'mine');
   refreshApproveCount();
 }
+
+// Live demo: switch between the sample company's people to see each role's view.
+const PERSONA_TITLE = { 'Alex Morgan': 'CEO', 'Priya Shah': 'Finance lead', 'Daniel Cohen': 'Engineering lead', 'Noa Katz': 'Marketing', 'Maya Levi': 'Designer', 'Sam Rivera': 'Engineer' };
+function renderDemoBar() {
+  $('demo-bar').hidden = !ws.demo_expires_at;
+  if (!ws.demo_expires_at) return;
+  $('demo-persona').replaceChildren(...ws.members.map((m) => new Option(
+    `${m.name} · ${PERSONA_TITLE[m.name] || m.role} (${m.role})`, m.id, false, m.id === me.user.id)));
+}
+$('demo-persona').addEventListener('change', async (e) => {
+  try {
+    await post('/auth/demo/switch', { user_id: Number(e.target.value) });
+    await load(ws.id);
+  } catch (err) { alert(err.message); }
+});
+$('demo-signup').addEventListener('click', async (e) => {
+  e.preventDefault();
+  await post('/auth/logout').catch(() => {});
+  location.assign('/signin');
+});
 
 async function refreshApproveCount() {
   const { requests } = await api(`/api/workspaces/${ws.id}/requests?scope=to_approve`);

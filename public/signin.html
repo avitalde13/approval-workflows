@@ -34,6 +34,7 @@
         <button class="btn btn-primary btn-block" type="submit" id="dev-btn">Sign in</button>
         <p class="fineprint">Developer login is for local development only. It turns off once Google sign-in is configured.</p>
       </form>
+      <p class="demo-link">Just looking around? <a href="/" id="try-demo">Try the live demo</a>, no sign-up needed.</p>
       <p class="legal-links">By continuing you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
     </div>
   </main>
@@ -63,6 +64,15 @@
       if (next) document.getElementById('google').href = `/auth/google?next=${encodeURIComponent(next)}`;
       document.getElementById('dev').hidden = !devLogin;
       document.getElementById('dev-divider').hidden = !(google && devLogin);
+    });
+
+    document.getElementById('try-demo').addEventListener('click', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/auth/demo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => null);
+      const body = res ? await res.json().catch(() => ({})) : {};
+      if (res && res.ok) return location.assign(body.next || '/app');
+      document.getElementById('error').textContent = body.error || 'The demo could not start. Please try again.';
+      document.getElementById('error').hidden = false;
     });
 
     document.getElementById('dev').addEventListener('submit', async (e) => {

@@ -22,7 +22,7 @@ function apiRoutes(pool) {
   router.get('/me', async (req, res, next) => {
     try {
       const { rows } = await pool.query(
-        `SELECT w.id, w.name, w.slug, m.role
+        `SELECT w.id, w.name, w.slug, m.role, w.demo_expires_at
            FROM memberships m JOIN workspaces w ON w.id = m.workspace_id
           WHERE m.user_id = $1
           ORDER BY w.created_at, w.id`,
@@ -43,9 +43,13 @@ function apiRoutes(pool) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // Workspaces made by demo visitors are deleted along with the demo.
+      const expires = req.user.is_demo
+        ? (await client.query('SELECT MAX(s.expires_at) AS e FROM sessions s WHERE s.user_id = $1', [req.user.id])).rows[0].e
+        : null;
       const { rows } = await client.query(
-        'INSERT INTO workspaces (name, slug, created_by) VALUES ($1, $2, $3) RETURNING id, name, slug, created_at',
-        [name, slugify(name), req.user.id]
+        'INSERT INTO workspaces (name, slug, created_by, demo_expires_at) VALUES ($1, $2, $3, $4) RETURNING id, name, slug, created_at',
+        [name, slugify(name), req.user.id, expires]
       );
       await client.query("INSERT INTO memberships (workspace_id, user_id, role) VALUES ($1, $2, 'admin')", [rows[0].id, req.user.id]);
       await audit(client, { workspaceId: rows[0].id, actorId: req.user.id, action: 'workspace.created', entityType: 'workspace', entityId: rows[0].id, details: { name } });
@@ -66,7 +70,7 @@ function apiRoutes(pool) {
     try {
       const role = await membershipRole(pool, id, req.user.id);
       if (!role) return res.status(404).json({ error: 'Workspace not found.' });
-      const ws = await pool.query('SELECT id, name, slug, created_at FROM workspaces WHERE id = $1', [id]);
+      const ws = await pool.query('SELECT id, name, slug, created_at, demo_expires_at FROM workspaces WHERE id = $1', [id]);
       const members = await pool.query(
         `SELECT u.id, u.name, u.email, u.avatar_url, m.role, m.manager_id, m.created_at AS joined_at
            FROM memberships m JOIN users u ON u.id = m.user_id

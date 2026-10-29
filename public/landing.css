@@ -110,6 +110,7 @@
 .cta-band > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
 .cta-overlay { position: absolute; inset: 0; z-index: -1; background: radial-gradient(700px 300px at 50% 50%, rgba(4, 120, 87, 0.55), transparent 80%), linear-gradient(180deg, rgba(6,11,10,.94), rgba(6,11,10,.78) 50%, rgba(6,11,10,.96)); }
 .cta-inner p { color: #c7d3cf; font-size: 18px; margin: 0 0 30px; }
+.cta-actions { justify-content: center; }
 
 /* Footer */
 .footer { border-top: 1px solid var(--l-line); padding: 36px 0 44px; }

@@ -193,3 +193,13 @@ input[type="date"] { width: 100%; font: inherit; font-size: 16px; padding: 9px 1
 /* Sign-in and invite pages: soft green glow behind the card */
 .auth-page { background: radial-gradient(700px 420px at 50% -10%, rgba(16, 185, 129, 0.16), transparent 70%), var(--bg); }
 .auth-card .logo { color: var(--text); text-decoration: none; }
+
+/* Live demo */
+.demo-bar { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 10px 24px; background: linear-gradient(90deg, #064e3b, #065f46); color: #ecfdf5; font-size: 14px; }
+.demo-tag { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: 12px; padding: 3px 8px; border-radius: 999px; background: #34d399; color: #022c22; }
+.demo-text { flex: 1 1 260px; color: #a7f3d0; }
+.demo-view { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.demo-view select { font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.25); background: #022c22; color: #ecfdf5; max-width: 100%; }
+.demo-cta { color: #fff !important; font-weight: 700; white-space: nowrap; }
+.demo-link { text-align: center; font-size: 14px; color: var(--muted); margin: 18px 0 0; }
+@media (max-width: 640px) { .demo-bar { padding: 10px 16px; } .demo-view { width: 100%; } .demo-view select { flex: 1; } }

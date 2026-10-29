@@ -86,6 +86,9 @@ function invitationRoutes(pool, mailer) {
     if (!ROLES.includes(role)) return res.status(400).json({ error: 'Role must be admin, manager or employee.' });
 
     try {
+      const demo = await pool.query('SELECT demo_expires_at FROM workspaces WHERE id = $1', [req.workspaceId]);
+      if (demo.rows[0]?.demo_expires_at) return res.status(403).json({ error: 'Invitations are turned off in the demo. Create your own workspace to invite your team.' });
+
       const member = await pool.query(
         'SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.workspace_id = $1 AND u.email = $2',
         [req.workspaceId, email]

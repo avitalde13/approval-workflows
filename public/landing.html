@@ -36,9 +36,9 @@
         <p class="hero-sub">Greenlight routes every purchase, expense and time-off request to the right people, flags what needs a closer look, and keeps a record of every decision. No more chasing approvals in email and chat.</p>
         <div class="hero-actions">
           <a class="btn btn-glow btn-lg" href="/signin" data-primary-cta>Get started free</a>
-          <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+          <button class="btn btn-ghost btn-lg" type="button" data-demo>▶ Try the live demo</button>
         </div>
-        <p class="hero-note">Sign in with Google. Set up your team in minutes.</p>
+        <p class="hero-note">No sign-up needed for the demo: explore a sample company as its CEO, a manager or an employee.</p>
       </div>
 
       <div class="mock reveal" aria-hidden="true">
@@ -149,7 +149,10 @@
     <div class="wrap cta-inner reveal">
       <h2>Ready to give your team the green light?</h2>
       <p>Set up your workspace in minutes. Free while we're in early access.</p>
-      <a class="btn btn-glow btn-lg" href="/signin" data-primary-cta>Get started free</a>
+      <div class="hero-actions cta-actions">
+        <a class="btn btn-glow btn-lg" href="/signin" data-primary-cta>Get started free</a>
+        <button class="btn btn-ghost btn-lg" type="button" data-demo>Try the live demo</button>
+      </div>
     </div>
   </section>
 
@@ -168,6 +171,23 @@
       document.querySelectorAll('[data-signed-out]').forEach((el) => (el.hidden = true));
       document.querySelectorAll('[data-primary-cta]').forEach((el) => { el.href = '/app'; el.textContent = 'Open Greenlight'; });
     }).catch(() => {});
+
+    // Live demo: creates a private sample company and opens it.
+    document.querySelectorAll('[data-demo]').forEach((btn) => btn.addEventListener('click', async () => {
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Setting up your demo…';
+      try {
+        const res = await fetch('/auth/demo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'The demo could not start. Please try again.');
+        location.assign(body.next || '/app');
+      } catch (err) {
+        alert(err.message);
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    }));
 
     // Fade sections in as they scroll into view.
     const items = document.querySelectorAll('.reveal');

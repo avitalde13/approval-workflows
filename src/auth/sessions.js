@@ -8,9 +8,8 @@ const { readCookie } = require('./cookies');
 const COOKIE = 'sid';
 const hash = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
-async function createSession(pool, userId) {
+async function createSession(pool, userId, expiresAt = new Date(Date.now() + config.sessionDays * 24 * 60 * 60 * 1000)) {
   const token = crypto.randomBytes(32).toString('base64url');
-  const expiresAt = new Date(Date.now() + config.sessionDays * 24 * 60 * 60 * 1000);
   await pool.query('INSERT INTO sessions (id, user_id, expires_at) VALUES ($1, $2, $3)', [hash(token), userId, expiresAt]);
   return { token, expiresAt };
 }
@@ -33,7 +32,7 @@ function loadSession(pool) {
     if (!token) return next();
     try {
       const { rows } = await pool.query(
-        `SELECT s.id AS session_id, u.id, u.email, u.name, u.avatar_url
+        `SELECT s.id AS session_id, u.id, u.email, u.name, u.avatar_url, u.is_demo
            FROM sessions s JOIN users u ON u.id = s.user_id
           WHERE s.id = $1 AND s.expires_at > NOW()`,
         [hash(token)]
