@@ -71,7 +71,8 @@ test('Admins tune or turn off reminders; others cannot', async () => {
   assert.equal((await send(people.mo, 'PATCH', app.base, url, { reminder_hours: 24 })).status, 403);
   assert.equal((await send(people.ada, 'PATCH', app.base, url, { reminder_hours: 24, escalate_hours: 12 })).status, 400);
   const res = await send(people.ada, 'PATCH', app.base, url, { reminder_hours: null, escalate_hours: null });
-  assert.deepEqual(res.body, { reminder_hours: null, escalate_hours: null });
+  assert.equal(res.body.reminder_hours, null);
+  assert.equal(res.body.escalate_hours, null);
   await submit();
   assert.deepEqual(await runReminders(app.pool, notifier(), later(1000)), { reminded: 0, escalated: 0 });
 });

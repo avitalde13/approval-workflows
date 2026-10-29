@@ -70,6 +70,17 @@ function memberRoutes(pool) {
         if (managerId !== member.manager_id) changes.manager_id = managerId;
       }
 
+      if ('department_id' in body) {
+        const deptId = body.department_id === null ? null : parseId(body.department_id);
+        if (deptId) {
+          const dept = await pool.query('SELECT 1 FROM departments WHERE id = $1 AND workspace_id = $2', [deptId, req.workspaceId]);
+          if (!dept.rows.length) return res.status(400).json({ error: 'Pick a department from this workspace.' });
+        }
+        await pool.query('UPDATE memberships SET department_id = $1 WHERE workspace_id = $2 AND user_id = $3', [deptId, req.workspaceId, userId]);
+        await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'member.department_changed', entityType: 'user', entityId: userId,
+          details: { email: member.email, to: deptId } });
+      }
+
       if ('role' in changes) {
         await pool.query('UPDATE memberships SET role = $1 WHERE workspace_id = $2 AND user_id = $3', [changes.role, req.workspaceId, userId]);
         await audit(pool, {

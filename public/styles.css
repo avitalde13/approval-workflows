@@ -279,3 +279,32 @@ input[type="file"] { font: inherit; font-size: 14px; max-width: 100%; }
 .settings-form { padding: 0 20px 20px; }
 .settings-form .muted { margin-top: 0; }
 @media (max-width: 640px) { .bell-panel { position: fixed; right: 16px; left: 16px; top: 64px; width: auto; } }
+
+/* Departments, budgets, currency */
+.settings-card + .settings-card { margin-top: 18px; }
+.dept-row { display: grid; grid-template-columns: 1fr auto; gap: 12px 20px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.dept-name { display: grid; gap: 6px; min-width: 0; }
+.dept-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dept-edit input { width: 120px; }
+.dept-add { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.dept-add input[type="text"] { flex: 1 1 160px; }
+.meter { display: grid; gap: 6px; }
+.meter-track { position: relative; display: flex; gap: 2px; height: 10px; border-radius: 999px; background: #d1fae5; overflow: hidden; max-width: 520px; }
+.meter-fill { background: #059669; border-radius: 999px 0 0 999px; }
+.meter-pending { background: #6ee7b7; }
+.meter-near .meter-track { background: #fef3c7; } .meter-near .meter-fill { background: #d97706; } .meter-near .meter-pending { background: #fcd34d; }
+.meter-over .meter-track { background: #fee2e2; } .meter-over .meter-fill { background: #dc2626; } .meter-over .meter-pending { background: #fca5a5; }
+.meter-text { font-size: 13px; }
+.meter-state { font-weight: 700; }
+@media (prefers-color-scheme: dark) {
+  .meter-track { background: #064e3b; } .meter-fill { background: #0ea472; } .meter-pending { background: #047857; }
+  .meter-near .meter-track { background: #451a03; } .meter-near .meter-fill { background: #d97706; } .meter-near .meter-pending { background: #92400e; }
+  .meter-over .meter-track { background: #450a0a; } .meter-over .meter-fill { background: #ef4444; } .meter-over .meter-pending { background: #991b1b; }
+}
+.budget-meters { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 28px; }
+.budget-line { display: grid; gap: 6px; }
+.budget-name { font-size: 14px; }
+.rate-list { display: grid; gap: 8px; margin: 6px 0 14px; }
+.rate-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-weight: 600; }
+.rate-row input { width: 120px; }
+@media (max-width: 640px) { .dept-row { grid-template-columns: 1fr; } }

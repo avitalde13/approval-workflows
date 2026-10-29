@@ -98,6 +98,7 @@
         <p class="muted dash-scope" id="dash-scope"></p>
         <div class="kpis" id="kpis"></div>
         <div class="dash-grid">
+          <div class="card chart-card dash-wide" id="chart-budgets" hidden></div>
           <div class="card chart-card dash-wide" id="chart-monthly"></div>
           <div class="card chart-card" id="chart-vendors"></div>
           <div class="card chart-card" id="chart-people"></div>
@@ -129,7 +130,7 @@
           <div class="card-head"><h2>Members</h2><span id="member-count" class="muted"></span></div>
           <p class="notice" id="member-msg" hidden></p>
           <table>
-            <thead><tr><th>Person</th><th>Role</th><th>Reports to</th><th class="admin-only"></th></tr></thead>
+            <thead><tr><th>Person</th><th>Role</th><th>Reports to</th><th class="hide-sm">Department</th><th class="admin-only"></th></tr></thead>
             <tbody id="members"></tbody>
           </table>
         </div>
@@ -143,6 +144,35 @@
 
       <!-- Settings (Admins) -->
       <section class="tab-panel" id="tab-settings" hidden>
+        <div class="card settings-card">
+          <div class="card-head"><h2>Departments and budgets</h2></div>
+          <div class="settings-form">
+            <p class="muted">Requests count toward the requester's department. Greenlight flags requests that would take a department past 80% or 100% of its budget.</p>
+            <div id="dept-list"></div>
+            <form class="dept-add" id="dept-add" novalidate>
+              <input type="text" id="dept-name" maxlength="60" placeholder="New department, e.g. Sales" aria-label="Department name">
+              <input type="text" inputmode="decimal" id="dept-budget" placeholder="Budget (optional)" aria-label="Budget">
+              <select id="dept-period" aria-label="Budget period"><option value="month">per month</option><option value="quarter" selected>per quarter</option><option value="year">per year</option></select>
+              <button class="btn btn-secondary" type="submit">Add department</button>
+            </form>
+            <p class="notice" id="dept-msg" hidden></p>
+          </div>
+        </div>
+        <div class="card settings-card">
+          <div class="card-head"><h2>Currency</h2></div>
+          <div class="settings-form">
+            <p class="muted">Reports and budgets are in the base currency. Requests in other currencies are converted with these rates.</p>
+            <div class="row">
+              <div class="field grow"><label for="set-base">Base currency</label><select id="set-base"></select></div>
+            </div>
+            <div id="rate-list" class="rate-list"></div>
+            <div class="chain-actions">
+              <button class="btn btn-secondary" type="button" id="rates-refresh">Use today's ECB rates</button>
+              <button class="btn btn-primary" type="button" id="rates-save">Save currency settings</button>
+            </div>
+            <p class="notice" id="rates-msg" hidden></p>
+          </div>
+        </div>
         <div class="card settings-card">
           <div class="card-head"><h2>Reminders and escalation</h2></div>
           <form class="settings-form" id="reminders-form" novalidate>

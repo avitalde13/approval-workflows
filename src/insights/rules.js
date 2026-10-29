@@ -3,6 +3,9 @@
 //
 // Each flag: { code, severity: 'low' | 'medium' | 'high', message }
 
+const { budgetUsage } = require('../budgets');
+const { getFx, toBase } = require('../currency');
+
 const DAY = 24 * 60 * 60 * 1000;
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -84,8 +87,23 @@ async function detectAnomalies(db, request) {
       }
     }
   }
+
+  // 6. Department budget: would this request take the department past 80% or 100% of its budget?
+  if (request.department_id) {
+    const fx = await getFx(db, ws);
+    const dept = (await budgetUsage(db, ws, { excludeRequestId: id, fx })).find((d) => d.id === request.department_id);
+    const inBase = toBase(amount, currency, fx);
+    if (dept?.budget && inBase != null) {
+      const total = dept.spent + dept.pending + inBase;
+      const pct = Math.round((total / dept.budget) * 100);
+      const text = `With this request, ${dept.name} would be at ${fmt(total, fx.base)} of its ${fmt(dept.budget, fx.base)} ${PERIOD[dept.period]} budget (${pct}%), counting approved and waiting requests.`;
+      if (total > dept.budget) flags.push({ code: 'over_budget', severity: 'high', message: text });
+      else if (total >= dept.budget * 0.8) flags.push({ code: 'budget_80', severity: 'medium', message: text });
+    }
+  }
   return flags;
 }
+const PERIOD = { month: 'monthly', quarter: 'quarterly', year: 'yearly' };
 
 async function detectTimeOff(db, request) {
   const flags = [];

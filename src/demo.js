@@ -10,13 +10,17 @@ const DEMO_HOURS = 24;
 const DEMO_DOMAIN = 'demo.greenlight.test'; // never a real mailbox; the mailer skips it
 
 const PEOPLE = [
-  { key: 'alex', name: 'Alex Morgan', role: 'admin', title: 'CEO', manager: null },
-  { key: 'priya', name: 'Priya Shah', role: 'manager', title: 'Finance lead', manager: 'alex' },
-  { key: 'daniel', name: 'Daniel Cohen', role: 'manager', title: 'Engineering lead', manager: 'alex' },
-  { key: 'noa', name: 'Noa Katz', role: 'employee', title: 'Marketing', manager: 'alex' },
-  { key: 'maya', name: 'Maya Levi', role: 'employee', title: 'Product designer', manager: 'daniel' },
-  { key: 'sam', name: 'Sam Rivera', role: 'employee', title: 'Software engineer', manager: 'daniel' },
+  { key: 'alex', name: 'Alex Morgan', role: 'admin', title: 'CEO', manager: null, dept: 'Operations' },
+  { key: 'priya', name: 'Priya Shah', role: 'manager', title: 'Finance lead', manager: 'alex', dept: 'Operations' },
+  { key: 'daniel', name: 'Daniel Cohen', role: 'manager', title: 'Engineering lead', manager: 'alex', dept: 'Engineering' },
+  { key: 'noa', name: 'Noa Katz', role: 'employee', title: 'Marketing', manager: 'alex', dept: 'Marketing' },
+  { key: 'maya', name: 'Maya Levi', role: 'employee', title: 'Product designer', manager: 'daniel', dept: 'Engineering' },
+  { key: 'sam', name: 'Sam Rivera', role: 'employee', title: 'Software engineer', manager: 'daniel', dept: 'Engineering' },
 ];
+
+// Quarterly budgets in USD. Marketing is close to its limit; the GPU request would push Engineering over.
+const DEPARTMENTS = [['Engineering', 15000], ['Marketing', 6000], ['Operations', 5000]];
+const RATES = { EUR: 1.08, GBP: 1.27, ILS: 0.27 };
 
 const CHAINS = {
   purchase: [['Manager', 'manager', null, null], ['Finance', 'user', 'priya', 1000], ['CEO', 'user', 'alex', 5000]],
@@ -66,6 +70,8 @@ const REQUESTS = [
   { by: 'sam', type: 'purchase', title: 'External monitor', amount: 389, vendor: 'Dell', daysAgo: 22, decisions: ['approve'] },
   { by: 'noa', type: 'expense', title: 'Team offsite catering', amount: 1280, vendor: 'Green Kitchen Catering', daysAgo: 16,
     decisions: ['approve', ['reject', 'Please split this by event and attach the receipts.']] },
+  { by: 'maya', type: 'expense', title: 'Hotel for the design conference in Berlin', amount: 620, currency: 'EUR', vendor: 'Motel One', daysAgo: 12,
+    decisions: ['approve', 'approve'], receipt: true },
   { by: 'maya', type: 'purchase', title: 'Conference ticket: Config 2026', amount: 1199, vendor: 'Figma', daysAgo: 9, decisions: ['approve'] },
   { by: 'sam', type: 'expense', title: 'Team lunch after the sprint demo', amount: 186, vendor: 'Sababa', daysAgo: 7,
     decisions: [['changes', 'Please attach the receipt so Finance can file it.']] },
@@ -81,11 +87,11 @@ const DAY = 24 * 60 * 60 * 1000;
 const day = (offset) => new Date(Date.now() + offset * DAY).toISOString().slice(0, 10);
 
 // A small, valid one-page PDF receipt for the demo.
-function receiptPdf(vendor, title, amount, date) {
+function receiptPdf(vendor, title, amount, currency, date) {
   const esc = (s) => String(s).replace(/[\\()]/g, (c) => `\\${c}`);
   const lines = [
     ['F2', 20, 760, vendor], ['F1', 11, 738, `Receipt  ·  ${date.toISOString().slice(0, 10)}`],
-    ['F1', 12, 690, title], ['F2', 14, 650, `Total paid: $${amount.toFixed(2)}`],
+    ['F1', 12, 690, title], ['F2', 14, 650, `Total paid: ${amount.toFixed(2)} ${currency}`],
     ['F1', 10, 620, 'Paid by company card ending 4242. Thank you!'],
   ];
   const stream = lines.map(([f, size, y, text]) => `BT /${f} ${size} Tf 60 ${y} Td (${esc(text)}) Tj ET`).join('\n');
@@ -117,16 +123,18 @@ async function insertAudit(db, { workspaceId, actorId, action, entityId, details
   );
 }
 
-async function seedRequest(db, workspaceId, ids, spec) {
+async function seedRequest(db, workspaceId, ids, spec, depts) {
   const requesterId = ids[spec.by];
+  const currency = spec.currency || 'USD';
   const createdAt = new Date(Date.now() - spec.daysAgo * DAY - 3 * 60 * 60 * 1000);
   const amount = spec.amount ?? null;
   const steps = await resolveApprovers(db, { workspaceId, type: spec.type, requesterId, amount });
   const { rows } = await db.query(
-    `INSERT INTO requests (workspace_id, requester_id, type, title, description, amount, currency, vendor, start_date, end_date, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 'USD', $7, $8, $9, $10) RETURNING id`,
-    [workspaceId, requesterId, spec.type, spec.title, spec.description || null, amount, spec.vendor || null,
-      spec.type === 'time_off' ? day(spec.start) : null, spec.type === 'time_off' ? day(spec.end) : null, createdAt]
+    `INSERT INTO requests (workspace_id, requester_id, type, title, description, amount, currency, vendor, start_date, end_date, created_at, department_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+    [workspaceId, requesterId, spec.type, spec.title, spec.description || null, amount, currency, spec.vendor || null,
+      spec.type === 'time_off' ? day(spec.start) : null, spec.type === 'time_off' ? day(spec.end) : null, createdAt,
+      depts[PEOPLE.find((p) => p.key === spec.by).dept]]
   );
   const requestId = rows[0].id;
   let first = true;
@@ -141,12 +149,12 @@ async function seedRequest(db, workspaceId, ids, spec) {
     );
   }
   await insertAudit(db, { workspaceId, actorId: requesterId, action: 'request.submitted', entityId: requestId, at: createdAt,
-    details: { type: spec.type, title: spec.title, amount, currency: 'USD', vendor: spec.vendor || null } });
+    details: { type: spec.type, title: spec.title, amount, currency, vendor: spec.vendor || null } });
   // No step applies (e.g. the CEO's own expenses): approved right away, as in the app.
   if (first) await db.query("UPDATE requests SET status = 'approved', decided_at = $1 WHERE id = $2", [createdAt, requestId]);
   await runRuleChecks(db, requestId, { aiEnabled: false });
   if (spec.receipt) {
-    const pdf = receiptPdf(spec.vendor, spec.title, spec.amount, createdAt);
+    const pdf = receiptPdf(spec.vendor, spec.title, spec.amount, currency, createdAt);
     await db.query(
       `INSERT INTO request_files (request_id, filename, content_type, size_bytes, data_base64, uploaded_by, created_at)
        VALUES ($1, $2, 'application/pdf', $3, $4, $5, $6)`,
@@ -240,7 +248,19 @@ async function createDemo(pool) {
      VALUES ($1, $2, 'workspace.created', 'workspace', $1, $3, $4)`,
     [ws.id, ids.alex, JSON.stringify({ name: 'Northwind Studio' }), started]
   );
-  for (const spec of [...history(), ...REQUESTS]) await seedRequest(pool, ws.id, ids, spec);
+  const depts = {};
+  for (const [name, budget] of DEPARTMENTS) {
+    const { rows } = await pool.query("INSERT INTO departments (workspace_id, name, budget_amount, budget_period) VALUES ($1, $2, $3, 'quarter') RETURNING id",
+      [ws.id, name, budget]);
+    depts[name] = rows[0].id;
+  }
+  for (const p of PEOPLE) {
+    await pool.query('UPDATE memberships SET department_id = $1 WHERE workspace_id = $2 AND user_id = $3', [depts[p.dept], ws.id, ids[p.key]]);
+  }
+  for (const [currency, rate] of Object.entries(RATES)) {
+    await pool.query('INSERT INTO exchange_rates (workspace_id, currency, rate) VALUES ($1, $2, $3)', [ws.id, currency, rate]);
+  }
+  for (const spec of [...history(), ...REQUESTS]) await seedRequest(pool, ws.id, ids, spec, depts);
   await seedNotifications(pool, ws.id);
   // Daniel's vacation is coming up: Priya approves for him while he's away.
   await pool.query('UPDATE memberships SET away_from = $1, away_until = $2, delegate_id = $3 WHERE workspace_id = $4 AND user_id = $5',

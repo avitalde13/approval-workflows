@@ -4,6 +4,13 @@
 //   PATCH /api/workspaces/:id/settings      { reminder_hours, escalate_hours }        (Admins)
 //   PUT   /api/workspaces/:id/away          { away_from, away_until, delegate_id }    (yourself)
 //   DELETE /api/workspaces/:id/away
+//   PATCH /api/workspaces/:id/settings      { base_currency }                          (Admins; clears the rates)
+//   PUT   /api/workspaces/:id/rates         { rates: { EUR: 1.08, ... } }              (Admins)
+//   POST  /api/workspaces/:id/rates/refresh                                            (Admins: today's ECB rates)
+//   GET   /api/workspaces/:id/departments                                              (members: with budget usage)
+//   POST  /api/workspaces/:id/departments    { name, budget_amount, budget_period }    (Admins)
+//   PATCH /api/workspaces/:id/departments/:deptId                                      (Admins)
+//   DELETE /api/workspaces/:id/departments/:deptId                                     (Admins)
 
 const express = require('express');
 const { requireUser } = require('../auth/sessions');
@@ -11,6 +18,34 @@ const { requireMember } = require('../permissions');
 const { audit } = require('../audit');
 const { activateStep, awayInfo } = require('../routing');
 const { loadRequestInfo } = require('../notifier');
+const { CURRENCIES, getFx, refreshRates, setRate } = require('../currency');
+const { budgetUsage } = require('../budgets');
+const { parseId } = require('../workspaces');
+
+const PERIODS = ['month', 'quarter', 'year'];
+
+function validDepartment(body, partial = false) {
+  const out = {};
+  if (!partial || 'name' in body) {
+    const name = typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ') : '';
+    if (name.length < 2 || name.length > 60) return { error: 'Department name must be 2–60 characters.' };
+    out.name = name;
+  }
+  if (!partial || 'budget_amount' in body) {
+    if (body.budget_amount === null || body.budget_amount === '' || body.budget_amount === undefined) out.budget_amount = null;
+    else {
+      const n = Number(body.budget_amount);
+      if (!Number.isFinite(n) || n <= 0 || n > 1e10) return { error: 'Budget must be a positive amount, or empty for no budget.' };
+      out.budget_amount = Math.round(n * 100) / 100;
+    }
+  }
+  if (!partial || 'budget_period' in body) {
+    const p = body.budget_period || 'quarter';
+    if (!PERIODS.includes(p)) return { error: 'Budget period must be month, quarter or year.' };
+    out.budget_period = p;
+  }
+  return { data: out };
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -23,11 +58,12 @@ function hoursOrNull(v) {
 }
 
 async function loadSettings(pool, workspaceId) {
-  const { rows } = await pool.query('SELECT reminder_hours, escalate_hours FROM workspaces WHERE id = $1', [workspaceId]);
-  return rows[0];
+  const { rows } = await pool.query('SELECT reminder_hours, escalate_hours, base_currency FROM workspaces WHERE id = $1', [workspaceId]);
+  const fx = await getFx(pool, workspaceId);
+  return { ...rows[0], currencies: CURRENCIES, rates: fx.list };
 }
 
-function settingsRoutes(pool, notifier) {
+function settingsRoutes(pool, notifier, { fetchImpl = fetch } = {}) {
   const router = express.Router({ mergeParams: true });
   router.use(requireUser);
 
@@ -53,6 +89,15 @@ function settingsRoutes(pool, notifier) {
       if (next_.reminder_hours && next_.escalate_hours && next_.escalate_hours <= next_.reminder_hours) {
         return res.status(400).json({ error: 'Escalation should come after the reminder.' });
       }
+      if ('base_currency' in body) {
+        if (!CURRENCIES.includes(body.base_currency)) return res.status(400).json({ error: `Base currency must be one of ${CURRENCIES.join(', ')}.` });
+        const current = (await loadSettings(pool, req.workspaceId)).base_currency;
+        if (body.base_currency !== current) {
+          changes.base_currency = body.base_currency;
+          // Rates are relative to the base currency, so they start over.
+          await pool.query('DELETE FROM exchange_rates WHERE workspace_id = $1', [req.workspaceId]);
+        }
+      }
       for (const [key, value] of Object.entries(changes)) {
         await pool.query(`UPDATE workspaces SET ${key} = $1 WHERE id = $2`, [value, req.workspaceId]); // key is from the fixed list above
       }
@@ -60,6 +105,96 @@ function settingsRoutes(pool, notifier) {
         await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'settings.updated', entityType: 'workspace', entityId: req.workspaceId, details: changes });
       }
       res.json(await loadSettings(pool, req.workspaceId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // ---------- Exchange rates ----------
+  router.put('/rates', requireMember(pool, 'admin'), async (req, res, next) => {
+    try {
+      const rates = req.body?.rates && typeof req.body.rates === 'object' ? req.body.rates : null;
+      if (!rates) return res.status(400).json({ error: 'Send { rates: { EUR: 1.08 } }.' });
+      const { base } = await getFx(pool, req.workspaceId);
+      for (const [currency, value] of Object.entries(rates)) {
+        if (!CURRENCIES.includes(currency) || currency === base) return res.status(400).json({ error: `Unsupported currency ${currency}.` });
+        if (value === null || value === '') { await pool.query('DELETE FROM exchange_rates WHERE workspace_id = $1 AND currency = $2', [req.workspaceId, currency]); continue; }
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0 || n > 1e6) return res.status(400).json({ error: `The rate for ${currency} must be a positive number.` });
+        await setRate(pool, req.workspaceId, currency, n);
+      }
+      await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'settings.rates_updated', entityType: 'workspace', entityId: req.workspaceId, details: { rates } });
+      res.json(await loadSettings(pool, req.workspaceId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/rates/refresh', requireMember(pool, 'admin'), async (req, res, next) => {
+    try {
+      const saved = await refreshRates(pool, req.workspaceId, fetchImpl);
+      await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'settings.rates_updated', entityType: 'workspace', entityId: req.workspaceId, details: { source: 'ecb', count: saved } });
+      res.json({ ...(await loadSettings(pool, req.workspaceId)), refreshed: saved });
+    } catch (err) {
+      console.error('Rate refresh failed:', err.message);
+      res.status(502).json({ error: "Couldn't reach the exchange rate service. Try again later, or enter rates by hand." });
+    }
+  });
+
+  // ---------- Departments and budgets ----------
+  router.get('/departments', requireMember(pool), async (req, res, next) => {
+    try {
+      const fx = await getFx(pool, req.workspaceId);
+      res.json({ base_currency: fx.base, departments: await budgetUsage(pool, req.workspaceId, { fx }) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/departments', requireMember(pool, 'admin'), async (req, res, next) => {
+    try {
+      const { data, error } = validDepartment(req.body || {});
+      if (error) return res.status(400).json({ error });
+      const dup = await pool.query('SELECT 1 FROM departments WHERE workspace_id = $1 AND LOWER(name) = LOWER($2)', [req.workspaceId, data.name]);
+      if (dup.rows.length) return res.status(409).json({ error: `There is already a ${data.name} department.` });
+      const { rows: [dept] } = await pool.query(
+        'INSERT INTO departments (workspace_id, name, budget_amount, budget_period) VALUES ($1, $2, $3, $4) RETURNING id, name',
+        [req.workspaceId, data.name, data.budget_amount, data.budget_period]);
+      await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'department.created', entityType: 'department', entityId: dept.id, details: data });
+      res.status(201).json(dept);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/departments/:deptId', requireMember(pool, 'admin'), async (req, res, next) => {
+    try {
+      const deptId = parseId(req.params.deptId);
+      const { data, error } = validDepartment(req.body || {}, true);
+      if (error) return res.status(400).json({ error });
+      const found = await pool.query('SELECT 1 FROM departments WHERE id = $1 AND workspace_id = $2', [deptId, req.workspaceId]);
+      if (!found.rows.length) return res.status(404).json({ error: 'Department not found.' });
+      for (const [key, value] of Object.entries(data)) {
+        await pool.query(`UPDATE departments SET ${key} = $1 WHERE id = $2`, [value, deptId]); // keys come from validDepartment
+      }
+      await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'department.updated', entityType: 'department', entityId: deptId, details: data });
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete('/departments/:deptId', requireMember(pool, 'admin'), async (req, res, next) => {
+    try {
+      const deptId = parseId(req.params.deptId);
+      const { rows: [dept] } = await pool.query('SELECT name FROM departments WHERE id = $1 AND workspace_id = $2', [deptId, req.workspaceId]);
+      if (!dept) return res.status(404).json({ error: 'Department not found.' });
+      // People and past requests keep working; they just no longer have a department.
+      await pool.query('UPDATE memberships SET department_id = NULL WHERE department_id = $1', [deptId]);
+      await pool.query('UPDATE requests SET department_id = NULL WHERE department_id = $1', [deptId]);
+      await pool.query('DELETE FROM departments WHERE id = $1', [deptId]);
+      await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'department.deleted', entityType: 'department', entityId: deptId, details: { name: dept.name } });
+      res.json({ ok: true });
     } catch (err) {
       next(err);
     }

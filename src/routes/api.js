@@ -70,16 +70,18 @@ function apiRoutes(pool) {
     try {
       const role = await membershipRole(pool, id, req.user.id);
       if (!role) return res.status(404).json({ error: 'Workspace not found.' });
-      const ws = await pool.query('SELECT id, name, slug, created_at, demo_expires_at FROM workspaces WHERE id = $1', [id]);
+      const ws = await pool.query('SELECT id, name, slug, created_at, demo_expires_at, base_currency FROM workspaces WHERE id = $1', [id]);
+      const departments = await pool.query('SELECT id, name FROM departments WHERE workspace_id = $1 ORDER BY name', [id]);
+      const rates = await pool.query('SELECT currency FROM exchange_rates WHERE workspace_id = $1 ORDER BY currency', [id]);
       const members = await pool.query(
-        `SELECT u.id, u.name, u.email, u.avatar_url, m.role, m.manager_id, m.created_at AS joined_at, m.away_from, m.away_until, m.delegate_id
+        `SELECT u.id, u.name, u.email, u.avatar_url, m.role, m.manager_id, m.created_at AS joined_at, m.away_from, m.away_until, m.delegate_id, m.department_id
            FROM memberships m JOIN users u ON u.id = m.user_id
           WHERE m.workspace_id = $1
           ORDER BY CASE m.role WHEN 'admin' THEN 0 WHEN 'manager' THEN 1 ELSE 2 END, u.name`,
         [id]
       );
       const day = (v) => (v == null ? null : (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10));
-      res.json({ ...ws.rows[0], role, members: members.rows.map((m) => ({ ...m, away_from: day(m.away_from), away_until: day(m.away_until) })) });
+      res.json({ ...ws.rows[0], role, departments: departments.rows, currencies: [ws.rows[0].base_currency, ...rates.rows.map((r) => r.currency)], members: members.rows.map((m) => ({ ...m, away_from: day(m.away_from), away_until: day(m.away_until) })) });
     } catch (err) {
       next(err);
     }

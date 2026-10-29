@@ -6,6 +6,8 @@
 const express = require('express');
 const { requireUser } = require('../auth/sessions');
 const { requireMember } = require('../permissions');
+const { getFx, toBase } = require('../currency');
+const { budgetUsage } = require('../budgets');
 
 const DAY = 24 * 60 * 60 * 1000;
 const RANGES = { '30d': 30, '90d': 90, '12m': 365, all: null };
@@ -27,7 +29,7 @@ async function loadRows(pool, req, since) {
   }
   const { rows } = await pool.query(
     `SELECT r.id, r.type, r.title, r.amount, r.currency, r.vendor, r.start_date, r.end_date, r.status, r.created_at, r.decided_at,
-            r.requester_id, u.name AS requester_name, u.email AS requester_email, ri.risk_level, ri.category
+            r.requester_id, r.department_id, u.name AS requester_name, u.email AS requester_email, ri.risk_level, ri.category
        FROM requests r JOIN users u ON u.id = r.requester_id LEFT JOIN request_insights ri ON ri.request_id = r.id
       WHERE r.workspace_id = $1${who}${when}
       ORDER BY r.created_at, r.id`,
@@ -50,13 +52,19 @@ function topBy(rows, key, limit) {
     .sort((a, b) => b.total - a.total).slice(0, limit);
 }
 
-// Builds the dashboard from rows. Money is reported in the most-used currency; others are counted separately.
-function summarize(rows, { now = new Date(), months = 6 } = {}) {
+// Builds the dashboard from rows. With exchange rates (fx), money is converted to the base currency;
+// without them, the most-used currency is reported. Currencies that can't be converted are listed separately.
+function summarize(rows, { now = new Date(), months = 6, fx = null } = {}) {
   const money = rows.filter((r) => MONEY_TYPES.includes(r.type) && r.amount != null);
-  const counts = new Map();
-  for (const r of money) counts.set(r.currency, (counts.get(r.currency) || 0) + 1);
-  const currency = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || 'USD';
-  const inCurrency = money.filter((r) => r.currency === currency);
+  let currency = fx?.base;
+  if (!currency) {
+    const counts = new Map();
+    for (const r of money) counts.set(r.currency, (counts.get(r.currency) || 0) + 1);
+    currency = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || 'USD';
+  }
+  const convert = (r) => (fx ? toBase(r.amount, r.currency, fx) : r.currency === currency ? r.amount : null);
+  const converted = money.map((r) => ({ ...r, amount: convert(r) }));
+  const inCurrency = converted.filter((r) => r.amount != null);
   const approved = inCurrency.filter((r) => r.status === 'approved' && r.decided_at);
   const pending = rows.filter((r) => r.status === 'pending' || r.status === 'changes_requested');
   const decided = rows.filter((r) => ['approved', 'rejected'].includes(r.status) && r.decided_at);
@@ -72,12 +80,12 @@ function summarize(rows, { now = new Date(), months = 6 } = {}) {
 
   return {
     currency,
-    other_currencies: [...counts.keys()].filter((c) => c !== currency),
+    other_currencies: [...new Set(converted.filter((r) => r.amount == null).map((r) => r.currency))],
     kpis: {
       approved_this_month: Math.round(approved.filter((r) => monthKey(r.decided_at) === thisMonth).reduce((s, r) => s + r.amount, 0) * 100) / 100,
       approved_total: Math.round(approved.reduce((s, r) => s + r.amount, 0) * 100) / 100,
       pending_count: pending.length,
-      pending_amount: Math.round(pending.filter((r) => r.currency === currency && r.amount != null).reduce((s, r) => s + r.amount, 0) * 100) / 100,
+      pending_amount: Math.round(inCurrency.filter((r) => r.status === 'pending' || r.status === 'changes_requested').reduce((s, r) => s + r.amount, 0) * 100) / 100,
       approval_rate: decided.length ? Math.round((decided.filter((r) => r.status === 'approved').length / decided.length) * 100) : null,
       median_hours_to_decision: decided.length
         ? Math.round(median(decided.map((r) => (new Date(r.decided_at) - new Date(r.created_at)) / 3600000)) * 10) / 10
@@ -121,7 +129,15 @@ function reportRoutes(pool) {
     try {
       const range = RANGES[req.query.range] === undefined ? '12m' : req.query.range;
       const rows = await loadRows(pool, req, since(req));
-      res.json({ range, scope: req.role === 'admin' ? 'company' : 'team', ...summarize(rows, { months: CHART_MONTHS[range] }) });
+      const fx = await getFx(pool, req.workspaceId);
+      // Budgets: every department for Admins; for Managers, the departments of their team.
+      let budgets = await budgetUsage(pool, req.workspaceId, { fx });
+      if (req.role !== 'admin') {
+        const { rows: team } = await pool.query('SELECT department_id FROM memberships WHERE workspace_id = $1 AND (user_id = $2 OR manager_id = $2)', [req.workspaceId, req.user.id]);
+        const mine = new Set(team.map((t) => t.department_id).filter(Boolean));
+        budgets = budgets.filter((b) => mine.has(b.id));
+      }
+      res.json({ range, scope: req.role === 'admin' ? 'company' : 'team', budgets, ...summarize(rows, { months: CHART_MONTHS[range], fx }) });
     } catch (err) {
       next(err);
     }

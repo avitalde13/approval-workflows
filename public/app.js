@@ -337,6 +337,8 @@ $('rq-type').addEventListener('change', syncRequestForm);
 let editing = null;
 function openRequestForm(r = null) {
   editing = r;
+  const currencies = [...new Set([...(ws.currencies || []), 'USD', 'EUR', 'GBP', 'ILS'])];
+  $('rq-currency').replaceChildren(...currencies.map((c) => new Option(c, c, false, c === (ws.base_currency || 'USD'))));
   $('request-form').reset();
   $('rq-error').hidden = true;
   $('rq-form-title').textContent = r ? 'Edit and resubmit' : 'New request';
@@ -466,7 +468,100 @@ async function loadSettings() {
   pick($('set-remind'), s.reminder_hours);
   pick($('set-escalate'), s.escalate_hours);
   $('reminders-msg').hidden = true;
+  renderCurrency(s);
+  loadDepartments();
 }
+
+// Budget meter: approved spend (solid) and waiting requests (lighter), with a status word so color isn't the only cue.
+function budgetMeter(d, currency) {
+  if (!d.budget) return h('span', { class: 'muted' }, 'No budget');
+  const pct = (v) => Math.min(100, (v / d.budget) * 100);
+  const total = d.spent + d.pending;
+  const state = d.spent > d.budget ? ['over', '⛔ Over budget'] : total >= d.budget * 0.8 ? ['near', '⚠ Near the limit'] : ['ok', '✓ On track'];
+  return h('div', { class: `meter meter-${state[0]}` },
+    h('div', { class: 'meter-track', role: 'img', 'aria-label': `${d.name}: ${money(d.spent, currency)} approved and ${money(d.pending, currency)} waiting, of ${money(d.budget, currency)}` },
+      h('span', { class: 'meter-fill', style: `width:${pct(d.spent)}%` }),
+      d.pending > 0 && h('span', { class: 'meter-pending', style: `width:${Math.max(0, pct(total) - pct(d.spent))}%` })),
+    h('div', { class: 'meter-text' },
+      h('strong', {}, `${money(d.spent, currency)} of ${money(d.budget, currency)}`),
+      h('span', { class: 'muted' }, ` this ${d.period} · ${d.used_pct}% used${d.pending ? ` · ${money(d.pending, currency)} waiting` : ''} · `),
+      h('span', { class: 'meter-state' }, state[1])));
+}
+
+async function loadDepartments() {
+  const { departments, base_currency: cur } = await api(`/api/workspaces/${ws.id}/departments`);
+  $('dept-msg').hidden = true;
+  $('dept-list').replaceChildren(...(departments.length ? departments.map((d) => {
+    const budget = h('input', { type: 'text', inputmode: 'decimal', value: d.budget ?? '', placeholder: 'No budget', 'aria-label': `Budget of ${d.name}` });
+    const period = h('select', { 'aria-label': `Budget period of ${d.name}` }, ...['month', 'quarter', 'year'].map((p) => new Option(`per ${p}`, p, false, p === d.period)));
+    return h('div', { class: 'dept-row' },
+      h('div', { class: 'dept-name' }, h('strong', {}, d.name), budgetMeter(d, cur)),
+      h('div', { class: 'dept-edit' }, budget, period,
+        h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: async () => {
+          try {
+            await send('PATCH', `/api/workspaces/${ws.id}/departments/${d.id}`, { budget_amount: budget.value.replace(/,/g, '') || null, budget_period: period.value });
+            await loadDepartments();
+            notice($('dept-msg'), `Saved ${d.name}.`, true);
+          } catch (err) { notice($('dept-msg'), err.message, false); }
+        } }, 'Save'),
+        h('button', { class: 'link-btn danger', type: 'button', onclick: async () => {
+          if (!confirm(`Delete the ${d.name} department? People and past requests stay; they just won't have a department.`)) return;
+          try { await send('DELETE', `/api/workspaces/${ws.id}/departments/${d.id}`); ws = await api(`/api/workspaces/${ws.id}`); loadDepartments(); }
+          catch (err) { notice($('dept-msg'), err.message, false); }
+        } }, 'Delete')));
+  }) : [h('p', { class: 'muted' }, 'No departments yet.')]));
+}
+$('dept-add').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await post(`/api/workspaces/${ws.id}/departments`, { name: $('dept-name').value, budget_amount: $('dept-budget').value.replace(/,/g, '') || null, budget_period: $('dept-period').value });
+    $('dept-name').value = '';
+    $('dept-budget').value = '';
+    ws = await api(`/api/workspaces/${ws.id}`);
+    await loadDepartments();
+    notice($('dept-msg'), 'Department added. Assign people to it on the Members tab.', true);
+  } catch (err) { notice($('dept-msg'), err.message, false); }
+});
+
+function renderCurrency(s) {
+  $('set-base').replaceChildren(...s.currencies.map((c) => new Option(c, c, false, c === s.base_currency)));
+  const rates = new Map(s.rates.map((r) => [r.currency, r]));
+  $('rate-list').replaceChildren(...s.currencies.filter((c) => c !== s.base_currency).map((c) => {
+    const r = rates.get(c);
+    return h('label', { class: 'rate-row' },
+      h('span', {}, `1 ${c} =`),
+      h('input', { type: 'text', inputmode: 'decimal', value: r ? String(r.rate) : '', placeholder: 'not set', 'data-currency': c, 'aria-label': `Rate for ${c}` }),
+      h('span', {}, s.base_currency),
+      h('small', { class: 'muted' }, r ? `${r.source === 'ecb' ? 'ECB' : 'set by hand'}, ${dateFmt.format(new Date(r.updated_at))}` : ''));
+  }));
+  $('rates-msg').hidden = true;
+}
+$('rates-save').addEventListener('click', async () => {
+  try {
+    if ($('set-base').value !== ws.base_currency) {
+      if (!confirm(`Change the base currency to ${$('set-base').value}? Exchange rates will need to be set again.`)) return;
+      await send('PATCH', `/api/workspaces/${ws.id}/settings`, { base_currency: $('set-base').value });
+      ws = await api(`/api/workspaces/${ws.id}`);
+      await loadSettings();
+      return notice($('rates-msg'), 'Base currency changed. Set the exchange rates again.', true);
+    }
+    const rates = {};
+    document.querySelectorAll('#rate-list input').forEach((i) => { rates[i.dataset.currency] = i.value.trim() ? i.value.replace(/,/g, '') : null; });
+    renderCurrency(await send('PUT', `/api/workspaces/${ws.id}/rates`, { rates }));
+    ws = await api(`/api/workspaces/${ws.id}`);
+    notice($('rates-msg'), 'Saved.', true);
+  } catch (err) { notice($('rates-msg'), err.message, false); }
+});
+$('rates-refresh').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try {
+    const s = await post(`/api/workspaces/${ws.id}/rates/refresh`);
+    renderCurrency(s);
+    ws = await api(`/api/workspaces/${ws.id}`);
+    notice($('rates-msg'), `Updated ${s.refreshed} rates from the European Central Bank.`, true);
+  } catch (err) { notice($('rates-msg'), err.message, false); }
+  e.target.disabled = false;
+});
 $('reminders-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const v = (id) => ($(id).value ? Number($(id).value) : null);
@@ -593,6 +688,12 @@ async function loadDashboard() {
     tile('Approval rate', k.approval_rate == null ? '—' : `${k.approval_rate}%`, 'of decided requests'),
     tile('Typical time to decide', hoursText(k.median_hours_to_decision), k.high_risk ? `${k.high_risk} high-risk request(s) in this period` : 'No high-risk requests'));
 
+  $('chart-budgets').hidden = !d.budgets.some((b) => b.budget);
+  if (d.budgets.some((b) => b.budget)) {
+    const meters = h('div', { class: 'budget-meters' }, ...d.budgets.filter((b) => b.budget).map((b) => h('div', { class: 'budget-line' }, h('strong', { class: 'budget-name' }, b.name), budgetMeter(b, c))));
+    chartCard($('chart-budgets'), 'Budgets', 'This period, by department. Lighter part: requests still waiting.', meters,
+      d.budgets.filter((b) => b.budget).map((b) => [b.name, `${money(b.spent, c)} of ${money(b.budget, c)} (${b.used_pct}%), ${money(b.pending, c)} waiting`]));
+  }
   const monthly = monthlyChart(d.monthly, c);
   chartCard($('chart-monthly'), 'Approved spending by month', 'Purchases and expenses, by the month they were approved', monthly,
     d.monthly.map((m) => [monthLabel(m.month, true), money(m.total, c)]));
@@ -635,6 +736,11 @@ function renderMembers() {
           new Option('— No manager —', '', false, !m.manager_id),
           ...ws.members.filter((x) => x.id !== m.id).map((x) => new Option(x.name, x.id, false, x.id === m.manager_id)))
       : nameOf(m.manager_id);
+    const deptName = ws.departments.find((d) => d.id === m.department_id)?.name || '—';
+    const deptCell = isAdmin && ws.departments.length
+      ? h('select', { 'aria-label': `Department of ${m.name}`, onchange: (e) => update(m, { department_id: e.target.value ? Number(e.target.value) : null }) },
+          new Option('— None —', '', false, !m.department_id), ...ws.departments.map((d) => new Option(d.name, d.id, false, d.id === m.department_id)))
+      : deptName;
     const remove = isAdmin && m.id !== me.user.id
       ? h('button', { class: 'link-btn danger', type: 'button', onclick: async () => {
           if (!confirm(`Remove ${m.name} from ${ws.name}?`)) return;
@@ -651,6 +757,7 @@ function renderMembers() {
         m.away_until && m.away_until >= today() && h('small', { class: 'away-tag' }, `Away ${m.away_from ? `${fmtDay(m.away_from)} – ` : 'until '}${fmtDay(m.away_until)} · ${nameOf(m.delegate_id)} approves`)))),
       h('td', {}, roleCell),
       h('td', {}, managerCell),
+      h('td', { class: 'hide-sm' }, deptCell),
       isAdmin && h('td', { style: 'text-align:right' }, remove));
   }));
   if (isAdmin) loadInvitations().catch((err) => notice($('invite-msg'), err.message, false));
@@ -782,6 +889,11 @@ const AUDIT_TEXT = {
   'member.away_set': (d) => `set out of office until ${fmtDay(d.until)}`,
   'member.away_cleared': () => 'is back in the office',
   'settings.updated': () => 'updated the workspace settings',
+  'settings.rates_updated': (d) => (d.source === 'ecb' ? 'updated exchange rates from the ECB' : 'updated exchange rates'),
+  'department.created': (d) => `created the ${d.name} department`,
+  'department.updated': () => 'updated a department budget',
+  'department.deleted': (d) => `deleted the ${d.name} department`,
+  'member.department_changed': (d) => `changed ${d.email}'s department`,
   'request.file_removed': (d) => `removed ${d.filename}`,
 };
 

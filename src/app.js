@@ -70,7 +70,7 @@ function createApp({
   app.use('/api/workspaces/:id/requests', sameOriginJsonOnly, requestRoutes(pool, notifier, { classifier, track }));
   app.use('/api/workspaces/:id/audit-log', sameOriginJsonOnly, auditRoutes(pool));
   app.use('/api/workspaces/:id/reports', sameOriginJsonOnly, reportRoutes(pool));
-  app.use('/api/workspaces/:id', sameOriginJsonOnly, settingsRoutes(pool, notifier));
+  app.use('/api/workspaces/:id', sameOriginJsonOnly, settingsRoutes(pool, notifier, { fetchImpl }));
   app.use('/api/notifications', sameOriginJsonOnly, notificationRoutes(pool));
   app.use('/api', sameOriginJsonOnly, apiRoutes(pool));
 

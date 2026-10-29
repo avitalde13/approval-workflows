@@ -17,6 +17,7 @@ const { parseId } = require('../workspaces');
 const { REQUEST_TYPES, resolveApprovers, ChainError } = require('../chains');
 const { audit } = require('../audit');
 const { activateStep } = require('../routing');
+const { budgetAlert } = require('../budgets');
 const { runRuleChecks, runAi, getInsight, asArray } = require('../insights');
 const { RANK } = require('../permissions');
 
@@ -157,15 +158,16 @@ function requestRoutes(pool, notifier, insights = { classifier: null, track: (p)
     const autoApproved = !approvers.some((a) => a.status === 'waiting');
     let firstActive = null;
 
+    const { rows: [membership] } = await pool.query('SELECT department_id FROM memberships WHERE workspace_id = $1 AND user_id = $2', [req.workspaceId, req.user.id]);
     const client = await pool.connect();
     let requestId;
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(
-        `INSERT INTO requests (workspace_id, requester_id, type, title, description, amount, currency, vendor, start_date, end_date, status, decided_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+        `INSERT INTO requests (workspace_id, requester_id, type, title, description, amount, currency, vendor, start_date, end_date, status, decided_at, department_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
         [req.workspaceId, req.user.id, data.type, data.title, data.description, data.amount, data.currency, data.vendor,
-          data.start_date, data.end_date, autoApproved ? 'approved' : 'pending', autoApproved ? new Date() : null]
+          data.start_date, data.end_date, autoApproved ? 'approved' : 'pending', autoApproved ? new Date() : null, membership?.department_id || null]
       );
       requestId = rows[0].id;
       firstActive = await insertApprovals(client, requestId, approvers, { workspaceId: req.workspaceId, requesterId: req.user.id });
@@ -359,6 +361,7 @@ function requestRoutes(pool, notifier, insights = { classifier: null, track: (p)
         await notifyRequester(request, 'advanced', req.user.name, comment || null);
       } else {
         await notifyRequester(request, finalStatus, req.user.name, comment || null);
+        if (finalStatus === 'approved') await budgetAlert(pool, notifier, request.id);
       }
       const updated = await loadRequest(pool, req.workspaceId, request.id);
       res.json({ ...updated, requester_email: undefined, approvals: await loadApprovals(pool, request.id) });
