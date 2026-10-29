@@ -24,6 +24,29 @@ const CHAINS = {
   time_off: [['Manager', 'manager', null, null]],
 };
 
+// A year of routine history before the recent requests below: subscriptions, travel and gear, all approved.
+const ROUTINE = [
+  ['priya', 'purchase', 'Slack Pro (quarterly)', 'Slack', 540],
+  ['daniel', 'purchase', 'AWS hosting', 'Amazon Web Services', 1380],
+  ['noa', 'purchase', 'Google Ads campaign', 'Google', 1650],
+  ['maya', 'expense', 'Train tickets for user interviews', 'Rail Europe', 210],
+  ['sam', 'expense', 'Meetup pizza for the dev community', 'Pizza Hut', 160],
+  ['alex', 'expense', 'Investor lunch', 'Taizu', 290],
+  ['daniel', 'purchase', 'Test devices (2 phones)', 'Apple', 1890],
+  ['noa', 'purchase', 'Event booth at Startup Expo', 'Startup Expo', 2300],
+];
+function history() {
+  const out = [];
+  for (let m = 11; m >= 4; m--) {
+    for (let k = 0; k < 3; k++) {
+      const [by, type, title, vendor, base] = ROUTINE[(m * 3 + k) % ROUTINE.length];
+      const amount = Math.round(base * (0.85 + ((m * 7 + k * 13) % 30) / 100));
+      out.push({ by, type, title, vendor, amount, daysAgo: m * 30 + 20 - k * 8, decisions: ['approve', 'approve', 'approve'] });
+    }
+  }
+  return out;
+}
+
 // Oldest first, so the automatic checks see the history that came before each request.
 // decisions: one per step that gets decided, in order: 'approve', ['reject', 'reason'] or ['changes', 'what to change'].
 // receipt: attach a generated PDF receipt.
@@ -118,6 +141,8 @@ async function seedRequest(db, workspaceId, ids, spec) {
   }
   await insertAudit(db, { workspaceId, actorId: requesterId, action: 'request.submitted', entityId: requestId, at: createdAt,
     details: { type: spec.type, title: spec.title, amount, currency: 'USD', vendor: spec.vendor || null } });
+  // No step applies (e.g. the CEO's own expenses): approved right away, as in the app.
+  if (first) await db.query("UPDATE requests SET status = 'approved', decided_at = $1 WHERE id = $2", [createdAt, requestId]);
   await runRuleChecks(db, requestId, { aiEnabled: false });
   if (spec.receipt) {
     const pdf = receiptPdf(spec.vendor, spec.title, spec.amount, createdAt);
@@ -168,7 +193,7 @@ async function createDemo(pool) {
       [`${p.key}.${tag}@${DEMO_DOMAIN}`, p.name]);
     ids[p.key] = rows[0].id;
   }
-  const started = new Date(Date.now() - 95 * DAY);
+  const started = new Date(Date.now() - 365 * DAY);
   const { rows: [ws] } = await pool.query(
     'INSERT INTO workspaces (name, slug, created_by, demo_expires_at, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
     ['Northwind Studio', `northwind-demo-${tag}`, ids.alex, expiresAt, started]
@@ -191,7 +216,7 @@ async function createDemo(pool) {
      VALUES ($1, $2, 'workspace.created', 'workspace', $1, $3, $4)`,
     [ws.id, ids.alex, JSON.stringify({ name: 'Northwind Studio' }), started]
   );
-  for (const spec of REQUESTS) await seedRequest(pool, ws.id, ids, spec);
+  for (const spec of [...history(), ...REQUESTS]) await seedRequest(pool, ws.id, ids, spec);
   return { workspaceId: ws.id, adminId: ids.alex, expiresAt };
 }
 

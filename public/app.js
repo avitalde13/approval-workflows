@@ -160,6 +160,7 @@ function showTab(name) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tab-panel').forEach((p) => (p.hidden = p.id !== `tab-${name}`));
   if (name === 'members') renderMembers();
+  if (name === 'dashboard') loadDashboard();
   if (name === 'chains') loadChains();
   if (name === 'audit') { auditBefore = null; $('audit-rows').replaceChildren(); loadAudit(); }
 }
@@ -374,6 +375,135 @@ $('request-form').addEventListener('submit', async (e) => {
     $('rq-btn').disabled = false;
   }
 });
+
+// ---------- Dashboard ----------
+
+let range = '12m';
+document.querySelectorAll('#ranges .chip').forEach((c) => c.addEventListener('click', () => {
+  range = c.dataset.range;
+  document.querySelectorAll('#ranges .chip').forEach((x) => x.classList.toggle('active', x === c));
+  loadDashboard();
+}));
+
+const compact = (n, currency) => {
+  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(n); }
+  catch { return String(Math.round(n)); }
+};
+const monthLabel = (key, long) => new Intl.DateTimeFormat(undefined, long ? { month: 'long', year: 'numeric' } : { month: 'short' })
+  .format(new Date(`${key}-15T12:00:00`));
+const hoursText = (h) => (h == null ? '—' : h < 1 ? 'under 1 h' : h < 48 ? `${Math.round(h)} h` : `${(h / 24).toFixed(1)} days`);
+
+// Tooltip shared by every chart.
+function showTip(e, html) {
+  const tip = $('chart-tip');
+  tip.replaceChildren(...html);
+  tip.hidden = false;
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  const y = Math.max(8, e.clientY - tip.offsetHeight - 12);
+  tip.style.left = `${x}px`;
+  tip.style.top = `${y}px`;
+}
+const hideTip = () => { $('chart-tip').hidden = true; };
+
+// Each chart card can switch between the chart and a plain table of the same numbers.
+function chartCard(el, title, subtitle, chart, rows) {
+  const table = h('table', { class: 'chart-table', hidden: true },
+    h('tbody', {}, ...rows.map(([k, v]) => h('tr', {}, h('td', {}, k), h('td', { class: 'num' }, v)))));
+  const toggle = h('button', { class: 'link-btn', type: 'button', onclick: () => {
+    const showTable = table.hidden;
+    table.hidden = !showTable;
+    chart.hidden = showTable;
+    toggle.textContent = showTable ? 'Chart' : 'Table';
+  } }, 'Table');
+  el.replaceChildren(
+    h('div', { class: 'chart-head' }, h('div', {}, h('h2', {}, title), subtitle && h('p', { class: 'muted' }, subtitle)), toggle),
+    chart, table);
+}
+
+const SVG = 'http://www.w3.org/2000/svg';
+function s(tag, attrs = {}, ...children) {
+  const el = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  el.append(...children);
+  return el;
+}
+const niceMax = (v) => {
+  if (v <= 0) return 1;
+  const p = 10 ** Math.floor(Math.log10(v));
+  return [1, 2, 2.5, 5, 10].map((m) => m * p).find((m) => m >= v);
+};
+
+// Monthly approved spend: columns from one baseline, rounded tops, the latest month labeled.
+function monthlyChart(data, currency) {
+  const W = 900, H = 260, L = 52, R = 12, T = 20, B = 28;
+  const max = niceMax(Math.max(...data.map((d) => d.total)));
+  const band = (W - L - R) / data.length;
+  const bw = Math.min(24, band * 0.6);
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart-svg', role: 'img', 'aria-label': 'Approved spending per month' });
+  for (let i = 0; i <= 4; i++) {
+    const v = (max / 4) * i;
+    svg.append(s('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), class: 'grid' }),
+      s('text', { x: L - 8, y: y(v) + 4, class: 'tick', 'text-anchor': 'end' }, compact(v, currency)));
+  }
+  data.forEach((d, i) => {
+    const cx = L + band * i + band / 2;
+    const top = y(d.total), base = y(0), hgt = base - top, r = Math.min(4, hgt);
+    if (hgt > 0) {
+      svg.append(s('path', { class: 'bar', d: `M${cx - bw / 2},${base} V${top + r} Q${cx - bw / 2},${top} ${cx - bw / 2 + r},${top} H${cx + bw / 2 - r} Q${cx + bw / 2},${top} ${cx + bw / 2},${top + r} V${base} Z` }));
+    }
+    if (data.length <= 6 || (data.length - 1 - i) % 2 === 0) { // every month, or every other one ending at the latest
+      svg.append(s('text', { x: cx, y: H - 8, class: 'tick', 'text-anchor': 'middle' }, monthLabel(d.month)));
+    }
+    if (i === data.length - 1 && d.total > 0) svg.append(s('text', { x: cx, y: top - 6, class: 'cap', 'text-anchor': 'middle' }, compact(d.total, currency)));
+    // Hit target: the whole column band, not just the bar.
+    const hit = s('rect', { x: L + band * i, y: T, width: band, height: H - T - B, class: 'hit' });
+    hit.addEventListener('mousemove', (e) => showTip(e, [h('strong', {}, monthLabel(d.month, true)), h('span', {}, money(d.total, currency))]));
+    hit.addEventListener('mouseleave', hideTip);
+    svg.append(hit);
+  });
+  return svg;
+}
+
+// Ranked horizontal bars with the value at each bar's tip.
+function barList(items, currency, emptyText) {
+  if (!items.length || items.every((i) => !i.total)) return h('p', { class: 'muted chart-empty' }, emptyText);
+  const max = Math.max(...items.map((i) => i.total));
+  return h('ul', { class: 'hbars' }, ...items.map((i) => h('li', {
+    onmousemove: (e) => showTip(e, [h('strong', {}, i.label), h('span', {}, money(i.total, currency))]), onmouseleave: hideTip },
+    h('span', { class: 'hbar-label' }, i.label),
+    h('span', { class: 'hbar-track' }, h('span', { class: 'hbar', style: `width:${Math.max(1.5, (i.total / max) * 100)}%` }),
+      h('span', { class: 'hbar-value' }, compact(i.total, currency))))));
+}
+
+async function loadDashboard() {
+  $('export-csv').href = `/api/workspaces/${ws.id}/reports/export.csv?range=${range}`;
+  let d;
+  try { d = await api(`/api/workspaces/${ws.id}/reports?range=${range}`); }
+  catch (err) { $('kpis').replaceChildren(h('p', { class: 'error' }, err.message)); return; }
+  const c = d.currency;
+  $('dash-scope').textContent = (d.scope === 'company' ? 'The whole company' : 'You and the people who report to you')
+    + `. Amounts are approved spending in ${c}` + (d.other_currencies.length ? ` (requests in ${d.other_currencies.join(', ')} are not included).` : '.');
+
+  const tile = (label, value, sub) => h('div', { class: 'kpi' }, h('span', { class: 'kpi-label' }, label), h('strong', { class: 'kpi-value' }, value), sub && h('span', { class: 'kpi-sub' }, sub));
+  const k = d.kpis;
+  $('kpis').replaceChildren(
+    tile('Approved this month', money(k.approved_this_month, c), `${money(k.approved_total, c)} in this period`),
+    tile('Waiting for a decision', String(k.pending_count), k.pending_amount ? `${money(k.pending_amount, c)} requested` : 'Nothing waiting'),
+    tile('Approval rate', k.approval_rate == null ? '—' : `${k.approval_rate}%`, 'of decided requests'),
+    tile('Typical time to decide', hoursText(k.median_hours_to_decision), k.high_risk ? `${k.high_risk} high-risk request(s) in this period` : 'No high-risk requests'));
+
+  const monthly = monthlyChart(d.monthly, c);
+  chartCard($('chart-monthly'), 'Approved spending by month', 'Purchases and expenses, by the month they were approved', monthly,
+    d.monthly.map((m) => [monthLabel(m.month, true), money(m.total, c)]));
+  chartCard($('chart-vendors'), 'Top vendors', null, barList(d.top_vendors, c, 'No approved spending yet.'),
+    d.top_vendors.map((v) => [v.label, money(v.total, c)]));
+  chartCard($('chart-people'), 'Top spenders', null, barList(d.top_people, c, 'No approved spending yet.'),
+    d.top_people.map((v) => [v.label, money(v.total, c)]));
+  const types = d.by_type.map((t) => ({ ...t, label: TYPE_LABEL[t.label] }));
+  chartCard($('chart-types'), 'Purchases vs expenses', null, barList(types, c, 'No approved spending yet.'),
+    types.map((v) => [v.label, money(v.total, c)]));
+}
 
 // ---------- Members ----------
 

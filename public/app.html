@@ -50,6 +50,7 @@
 
       <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab active" role="tab" data-tab="requests" type="button">Requests</button>
+        <button class="tab manager-only" role="tab" data-tab="dashboard" type="button">Dashboard</button>
         <button class="tab" role="tab" data-tab="members" type="button">Members</button>
         <button class="tab" role="tab" data-tab="chains" type="button">Approval chains</button>
         <button class="tab admin-only" role="tab" data-tab="audit" type="button">Audit log</button>
@@ -70,6 +71,28 @@
           </table>
           <p class="empty-row" id="requests-empty" hidden>Nothing here yet.</p>
         </div>
+      </section>
+
+      <!-- Dashboard -->
+      <section class="tab-panel" id="tab-dashboard" hidden>
+        <div class="dash-controls">
+          <div class="filters" id="ranges" role="group" aria-label="Time range">
+            <button class="chip" data-range="30d" type="button">30 days</button>
+            <button class="chip" data-range="90d" type="button">90 days</button>
+            <button class="chip active" data-range="12m" type="button">12 months</button>
+            <button class="chip" data-range="all" type="button">All time</button>
+          </div>
+          <a class="btn btn-secondary btn-small" id="export-csv" href="#" download>⬇ Export to Excel (CSV)</a>
+        </div>
+        <p class="muted dash-scope" id="dash-scope"></p>
+        <div class="kpis" id="kpis"></div>
+        <div class="dash-grid">
+          <div class="card chart-card dash-wide" id="chart-monthly"></div>
+          <div class="card chart-card" id="chart-vendors"></div>
+          <div class="card chart-card" id="chart-people"></div>
+          <div class="card chart-card" id="chart-types"></div>
+        </div>
+        <div class="chart-tip" id="chart-tip" role="status" hidden></div>
       </section>
 
       <!-- Members -->

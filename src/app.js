@@ -14,6 +14,7 @@ const { requestRoutes } = require('./routes/requests');
 const { auditRoutes } = require('./routes/audit');
 const { createClassifier } = require('./insights/ai');
 const { createMailer } = require('./email/mailer');
+const { reportRoutes } = require('./routes/reports');
 const { escapeHtml } = require('./email/templates');
 
 // Blocks cross-site form posts (CSRF): state-changing requests must be JSON and come from our own origin.
@@ -63,6 +64,7 @@ function createApp({
   app.use('/api/workspaces/:id/approval-chains', sameOriginJsonOnly, chainRoutes(pool));
   app.use('/api/workspaces/:id/requests', sameOriginJsonOnly, requestRoutes(pool, mailer, { classifier, track }));
   app.use('/api/workspaces/:id/audit-log', sameOriginJsonOnly, auditRoutes(pool));
+  app.use('/api/workspaces/:id/reports', sameOriginJsonOnly, reportRoutes(pool));
   app.use('/api', sameOriginJsonOnly, apiRoutes(pool));
 
   const page = (file) => (req, res) => res.sendFile(path.join(__dirname, '..', 'public', file));

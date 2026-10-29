@@ -93,3 +93,13 @@ test('the demo includes a request sent back for changes and PDF receipts', async
   const pdf = Buffer.from(await res.arrayBuffer()).toString();
   assert.ok(pdf.startsWith('%PDF-') && pdf.trim().endsWith('%%EOF'));
 });
+
+test('no demo request is stuck waiting without an approver', async () => {
+  const { ws } = await startDemo();
+  const pending = (await app.pool.query("SELECT id FROM requests WHERE workspace_id = $1 AND status = 'pending'", [ws.id])).rows;
+  assert.ok(pending.length > 0);
+  for (const r of pending) {
+    const steps = (await app.pool.query("SELECT 1 FROM request_approvals WHERE request_id = $1 AND status = 'pending'", [r.id])).rows;
+    assert.equal(steps.length, 1, `request ${r.id} has a current approver`);
+  }
+});
