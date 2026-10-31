@@ -35,7 +35,7 @@ a { color: var(--brand); }
 .btn:disabled { opacity: .6; cursor: wait; }
 .btn-google svg { width: 18px; height: 18px; }
 label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 6px; }
-input[type="text"], input[type="email"] { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+input[type="text"], input[type="email"], input[type="password"], input[type="url"], input[type="number"], input[type="search"] { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); }
 input:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color: transparent; }
 .field { margin-bottom: 14px; }
 .error { color: var(--danger); background: var(--danger-bg); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 0 0 14px; }
