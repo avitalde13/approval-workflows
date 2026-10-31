@@ -297,7 +297,7 @@ input[type="file"] { font: inherit; font-size: 14px; max-width: 100%; }
 .meter-text { font-size: 13px; }
 .meter-state { font-weight: 700; }
 @media (prefers-color-scheme: dark) {
-  .meter-track { background: #064e3b; } .meter-fill { background: #0ea472; } .meter-pending { background: #047857; }
+  .meter-track { background: rgba(14, 164, 114, 0.14); } .meter-fill { background: #0ea472; } .meter-pending { background: #047857; }
   .meter-near .meter-track { background: #451a03; } .meter-near .meter-fill { background: #d97706; } .meter-near .meter-pending { background: #92400e; }
   .meter-over .meter-track { background: #450a0a; } .meter-over .meter-fill { background: #ef4444; } .meter-over .meter-pending { background: #991b1b; }
 }
@@ -334,3 +334,8 @@ input[type="file"] { font: inherit; font-size: 14px; max-width: 100%; }
 .balance-hint { margin: -4px 0 12px; font-size: 14px; color: var(--muted); }
 .balance-hint.over { color: var(--danger); font-weight: 600; }
 @media (max-width: 640px) { .cal-grid { display: none; } .cal-list { display: block; } .cal-legend { margin-left: 0; } }
+
+/* Onboarding: what a workspace is and how to name it */
+.name-tips { text-align: left; max-width: 520px; margin: 0 auto 18px; padding-left: 20px; display: grid; gap: 6px; color: var(--muted); }
+.name-tips strong { color: var(--text); }
+.name-note { margin: 14px 0 0; font-size: 14px; }

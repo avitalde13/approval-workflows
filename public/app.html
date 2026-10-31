@@ -41,11 +41,19 @@
     <!-- No workspace yet -->
     <section class="card empty-state" id="onboarding" hidden>
       <h1>Create your company's workspace</h1>
-      <p>A workspace holds your company's people, requests and approvals. You'll be its Admin.</p>
+      <p>A <strong>workspace</strong> is your company's private space in Greenlight. It holds your people, their requests,
+        approval chains, budgets and the full record of every decision. Nobody outside it can see anything inside it.
+        You'll be its <strong>Admin</strong>, and you invite everyone else.</p>
+      <ul class="name-tips">
+        <li><strong>Name it after your company</strong>, the way your colleagues know it. For example: <em>Acme Inc.</em></li>
+        <li><strong>Only one team using Greenlight?</strong> Add the team. For example: <em>Acme – Marketing</em></li>
+        <li>Everyone you invite sees this name on their invitation and at the top of the app.</li>
+      </ul>
       <form class="inline-form" id="create-form" novalidate>
-        <input type="text" id="create-name" maxlength="80" placeholder="Acme Inc." aria-label="Workspace name">
+        <input type="text" id="create-name" maxlength="80" placeholder="Your company's name, e.g. Acme Inc." aria-label="Workspace name (your company or team)">
         <button class="btn btn-primary" type="submit" id="create-btn">Create workspace</button>
       </form>
+      <p class="muted name-note">Just looking around? <a href="/" id="onboarding-demo">Try the live demo</a> with a sample company instead.</p>
       <p class="error" id="create-error" style="max-width:460px;margin:14px auto 0" hidden></p>
     </section>
 
@@ -252,9 +260,11 @@
   <dialog class="dialog" id="ws-dialog">
     <form id="dialog-form" novalidate>
       <h2>New workspace</h2>
+      <p class="muted" style="margin-top:0">A separate, private space for another company or team, with its own people, requests and budgets. You'll be its Admin.</p>
       <div class="field">
         <label for="dialog-name">Company or team name</label>
-        <input type="text" id="dialog-name" maxlength="80" placeholder="Acme Inc.">
+        <input type="text" id="dialog-name" maxlength="80" placeholder="e.g. Acme Inc. or Acme – Marketing">
+        <small class="muted">Use the name your colleagues know. Everyone you invite will see it.</small>
       </div>
       <p class="error" id="dialog-error" hidden></p>
       <div class="dialog-actions">

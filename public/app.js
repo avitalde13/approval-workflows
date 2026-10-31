@@ -1063,6 +1063,13 @@ async function createWorkspace(name, errorEl, btn) {
   }
 }
 
+$('onboarding-demo').addEventListener('click', async (e) => {
+  e.preventDefault();
+  try {
+    const body = await post('/auth/demo');
+    location.assign(body.next || '/app');
+  } catch (err) { alert(err.message); }
+});
 $('create-form').addEventListener('submit', (e) => { e.preventDefault(); createWorkspace($('create-name').value, $('create-error'), $('create-btn')); });
 $('new-ws').addEventListener('click', () => { $('dialog-name').value = ''; $('dialog-error').hidden = true; $('ws-dialog').showModal(); });
 $('dialog-form').addEventListener('submit', async (e) => {
