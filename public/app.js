@@ -117,6 +117,20 @@ function saveWorkspaceId(id) { try { localStorage.setItem(STORE_KEY, String(id))
 
 document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
 
+// Clicking the dark area around a pop-up closes it (a press that starts inside, e.g. selecting text, doesn't count).
+document.querySelectorAll('dialog').forEach((d) => {
+  const outside = (e) => {
+    const r = d.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
+  let pressedOutside = false;
+  d.addEventListener('mousedown', (e) => { pressedOutside = e.target === d && outside(e); });
+  d.addEventListener('click', (e) => {
+    if (pressedOutside && e.target === d && outside(e)) d.close();
+    pressedOutside = false;
+  });
+});
+
 // ---------- Loading ----------
 
 async function load(selectId) {
@@ -308,15 +322,17 @@ async function openRequest(id) {
         h('div', { class: 'step-status' }, STEP_LABEL[a.status], a.decided_at && a.status !== 'skipped' ? ` · ${timeFmt.format(new Date(a.decided_at))}` : ''),
         a.comment && h('div', { class: 'step-comment' }, a.comment),
       ))))),
-    r.can_decide && h('div', { class: 'decide' }, comment, error,
-      h('div', { class: 'dialog-actions' },
-        h('button', { class: 'btn btn-danger', type: 'button', onclick: (e) => decide('reject', e.target) }, 'Reject'),
-        h('button', { class: 'btn btn-secondary', type: 'button', title: 'Ask the requester to change something and resubmit', onclick: (e) => decide('request_changes', e.target) }, 'Send back'),
-        h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => decide('approve', e.target) }, 'Approve'))),
-    !r.can_decide && error,
-    h('div', { class: 'dialog-actions' },
-      r.can_cancel && h('button', { class: 'btn btn-secondary', type: 'button', onclick: (e) => cancel(e.target) }, 'Cancel request'),
-      h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => $('detail-dialog').close() }, 'Close')),
+    r.can_decide && h('div', { class: 'decide' }, h('label', { class: 'decide-label' }, 'Your decision'), comment),
+    error,
+    // One row: leaving on the left, deciding on the right (Approve last, as the main action).
+    h('div', { class: 'detail-actions' },
+      h('div', { class: 'actions-left' },
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => $('detail-dialog').close() }, 'Close'),
+        r.can_cancel && h('button', { class: 'btn btn-ghost danger-text', type: 'button', onclick: (e) => cancel(e.target) }, 'Cancel request')),
+      r.can_decide && h('div', { class: 'actions-right' },
+        h('button', { class: 'btn btn-danger', type: 'button', title: 'Turn this request down (needs a comment)', onclick: (e) => decide('reject', e.target) }, '✕ Reject'),
+        h('button', { class: 'btn btn-secondary', type: 'button', title: 'Ask for a change, then they resubmit (needs a comment)', onclick: (e) => decide('request_changes', e.target) }, '↩ Send back'),
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: (e) => decide('approve', e.target) }, '✓ Approve'))),
   ].filter(Boolean));
   $('detail-dialog').showModal();
 }
