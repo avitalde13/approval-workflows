@@ -90,6 +90,9 @@ test('receipts: the requester attaches images or PDFs; approvers can open them',
   assert.equal(mine[0].file_count, 2);
   await people.mo.post(`${url}/decision`, { decision: 'approve' });
   assert.equal((await send(people.eli, 'DELETE', app.base, `${url}/files/${png.body.id}`)).status, 409);
+  // A receipt can still be added after approval (it often arrives later).
+  assert.equal((await add(people.eli, { filename: 'late.png', content_type: 'image/png', data: PNG.toString('base64') })).status, 201);
+  assert.equal((await people.eli.get(url)).body.can_remove_files, false);
 });
 
 test('at most 5 files of up to 5 MB each', async () => {

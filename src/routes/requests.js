@@ -22,7 +22,8 @@ const { runRuleChecks, runAi, getInsight, asArray } = require('../insights');
 const { RANK } = require('../permissions');
 
 const MAX_AMOUNT = 10_000_000;
-const OPEN = ['pending', 'changes_requested']; // not decided yet: files can change, the requester can cancel
+const OPEN = ['pending', 'changes_requested']; // not decided yet: files can be removed, the requester can cancel
+const ATTACHABLE = [...OPEN, 'approved'];    // receipts often arrive after approval, so they can still be added
 
 // Receipts: images or PDF, checked by their first bytes as well as the declared type.
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -279,7 +280,8 @@ function requestRoutes(pool, notifier, insights = { classifier: null, track: (p)
         can_decide: request.status === 'pending' && current?.approver_id === req.user.id,
         can_cancel: OPEN.includes(request.status) && request.requester_id === req.user.id,
         can_edit: request.status === 'changes_requested' && request.requester_id === req.user.id,
-        can_attach: OPEN.includes(request.status) && request.requester_id === req.user.id,
+        can_attach: ATTACHABLE.includes(request.status) && request.requester_id === req.user.id,
+        can_remove_files: OPEN.includes(request.status) && request.requester_id === req.user.id,
       });
     } catch (err) {
       next(err);
@@ -462,7 +464,7 @@ function requestRoutes(pool, notifier, insights = { classifier: null, track: (p)
       const request = await openForFiles(req, res);
       if (!request) return;
       if (request.requester_id !== req.user.id) return res.status(403).json({ error: 'Only the person who submitted the request can attach files.' });
-      if (!OPEN.includes(request.status)) return res.status(409).json({ error: `Files can't change once a request is ${request.status}.` });
+      if (!ATTACHABLE.includes(request.status)) return res.status(409).json({ error: `Files can't be added to a ${request.status} request.` });
       const filename = String(req.body?.filename || '').replace(/[\x00-\x1f/\\]/g, '').trim().slice(0, 120);
       const type = String(req.body?.content_type || '');
       const data = typeof req.body?.data === 'string' ? Buffer.from(req.body.data, 'base64') : Buffer.alloc(0);
@@ -506,7 +508,7 @@ function requestRoutes(pool, notifier, insights = { classifier: null, track: (p)
       const request = await openForFiles(req, res);
       if (!request) return;
       if (request.requester_id !== req.user.id) return res.status(403).json({ error: 'Only the person who submitted the request can remove files.' });
-      if (!OPEN.includes(request.status)) return res.status(409).json({ error: `Files can't change once a request is ${request.status}.` });
+      if (!OPEN.includes(request.status)) return res.status(409).json({ error: `Files can't be removed once a request is ${request.status}.` });
       const { rows: [file] } = await pool.query('DELETE FROM request_files WHERE id = $1 AND request_id = $2 RETURNING filename', [parseId(req.params.fileId), request.id]);
       if (!file) return res.status(404).json({ error: 'File not found.' });
       await audit(pool, { workspaceId: req.workspaceId, actorId: req.user.id, action: 'request.file_removed', entityType: 'request', entityId: request.id, details: { filename: file.filename } });

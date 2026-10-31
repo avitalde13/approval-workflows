@@ -390,3 +390,10 @@ input[type="file"]::file-selector-button:hover { border-color: var(--brand); col
 .file-input:focus-visible + .file-btn { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
 .file-names { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
 .file-names.picked { color: var(--text); }
+
+/* In-app message and confirm pop-ups */
+.ui-dialog { max-width: 420px; }
+.ui-dialog h2 { font-size: 18px; margin: 0 0 8px; }
+.ui-dialog p { margin: 0 0 18px; color: var(--muted); line-height: 1.55; }
+.ui-dialog .btn-danger { background: #dc2626; color: #fff; }
+.ui-dialog .btn-danger:hover { background: #b91c1c; }

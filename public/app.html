@@ -345,6 +345,18 @@
     <div id="detail"></div>
   </dialog>
 
+  <!-- Messages and confirmations (instead of the browser's own pop-ups) -->
+  <dialog class="dialog ui-dialog" id="ui-dialog">
+    <form method="dialog">
+      <h2 id="ui-title"></h2>
+      <p id="ui-text"></p>
+      <div class="dialog-actions">
+        <button class="btn btn-secondary" value="cancel" id="ui-cancel">Cancel</button>
+        <button class="btn btn-primary" value="ok" id="ui-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/select.js"></script>
   <script src="/app.js"></script>
 </body>

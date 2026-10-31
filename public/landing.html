@@ -198,9 +198,8 @@
         if (!res.ok) throw new Error(body.error || 'The demo could not start. Please try again.');
         location.assign(body.next || '/app');
       } catch (err) {
-        alert(err.message);
-        btn.disabled = false;
-        btn.textContent = label;
+        btn.textContent = err.message;
+        setTimeout(() => { btn.disabled = false; btn.textContent = label; }, 4000);
       }
     }));
 

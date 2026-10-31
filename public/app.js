@@ -72,6 +72,27 @@ async function uploadFiles(requestId, files) {
   }
 }
 
+// The app's own message and confirm pop-ups. Both return a promise; uiConfirm resolves true on OK.
+function uiDialog({ title = '', text = '', ok = 'OK', cancel = null, danger = false }) {
+  return new Promise((resolve) => {
+    const d = $('ui-dialog');
+    $('ui-title').textContent = title;
+    $('ui-title').hidden = !title;
+    $('ui-text').textContent = text;
+    $('ui-text').hidden = !text;
+    $('ui-ok').textContent = ok;
+    $('ui-ok').className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+    $('ui-cancel').hidden = !cancel;
+    if (cancel) $('ui-cancel').textContent = cancel;
+    d.returnValue = '';
+    d.addEventListener('close', () => resolve(d.returnValue === 'ok'), { once: true });
+    d.showModal();
+    $('ui-ok').focus();
+  });
+}
+const uiAlert = (text, title = 'Something went wrong') => uiDialog({ title, text });
+const uiConfirm = (title, { text = '', ok = 'Yes', cancel = 'Cancel', danger = false } = {}) => uiDialog({ title, text, ok, cancel, danger });
+
 function notice(el, text, ok) {
   el.textContent = text;
   el.className = ok ? 'notice notice-ok' : 'notice notice-error';
@@ -142,7 +163,7 @@ $('demo-persona').addEventListener('change', async (e) => {
   try {
     await post('/auth/demo/switch', { user_id: Number(e.target.value) });
     await load(ws.id);
-  } catch (err) { alert(err.message); }
+  } catch (err) { uiAlert(err.message); }
 });
 $('demo-signup').addEventListener('click', async (e) => {
   e.preventDefault();
@@ -199,7 +220,7 @@ async function loadRequests() {
 
 async function openRequest(id) {
   let r;
-  try { r = await api(`/api/workspaces/${ws.id}/requests/${id}`); } catch (err) { return alert(err.message); }
+  try { r = await api(`/api/workspaces/${ws.id}/requests/${id}`); } catch (err) { return uiAlert(err.message); }
   const facts = [
     ['Type', r.type_label],
     r.type === 'time_off' ? ['Dates', amountOrDates(r)] : ['Amount', money(r.amount, r.currency)],
@@ -225,7 +246,7 @@ async function openRequest(id) {
     }
   }
   async function cancel(btn) {
-    if (!confirm('Cancel this request?')) return;
+    if (!(await uiConfirm('Cancel this request?', { text: "Approvers won't see it anymore. This can't be undone.", ok: 'Cancel request', cancel: 'Keep it', danger: true }))) return;
     btn.disabled = true;
     try {
       await post(`/api/workspaces/${ws.id}/requests/${r.id}/cancel`);
@@ -238,7 +259,7 @@ async function openRequest(id) {
   const filesUrl = `/api/workspaces/${ws.id}/requests/${r.id}/files`;
   const picker = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif,application/pdf', multiple: true, hidden: true,
     onchange: async (e) => {
-      try { await uploadFiles(r.id, [...e.target.files]); } catch (err) { alert(err.message); }
+      try { await uploadFiles(r.id, [...e.target.files]); } catch (err) { await uiAlert(err.message, "The file wasn't attached"); }
       openRequest(r.id);
       loadRequests();
     } });
@@ -248,8 +269,8 @@ async function openRequest(id) {
       h('a', { href: `${filesUrl}/${f.id}`, target: '_blank', rel: 'noopener' }, f.content_type === 'application/pdf' ? '📄 ' : '🖼️ ', f.filename),
       h('span', { class: 'muted' }, ` · ${fileSize(f.size_bytes)}`),
       r.can_attach && h('button', { class: 'link-btn danger', type: 'button', onclick: async () => {
-        if (!confirm(`Remove ${f.filename}?`)) return;
-        try { await send('DELETE', `${filesUrl}/${f.id}`); openRequest(r.id); loadRequests(); } catch (err) { alert(err.message); }
+        if (!(await uiConfirm(`Remove ${f.filename}?`, { ok: 'Remove', danger: true }))) return;
+        try { await send('DELETE', `${filesUrl}/${f.id}`); openRequest(r.id); loadRequests(); } catch (err) { uiAlert(err.message); }
       } }, 'Remove')))) : h('p', { class: 'muted', style: 'margin:0 0 8px' }, 'No files yet. Approvers often ask for a receipt or invoice.'),
     r.can_attach && r.files.length < 5 && h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => picker.click() }, '📎 Attach receipt'),
     picker);
@@ -317,7 +338,7 @@ function insightPanel(r) {
       ws.role === 'admin' && i.ai_status !== 'off' && h('button', { class: 'link-btn', type: 'button', onclick: async (e) => {
         e.target.disabled = true;
         try { await post(`/api/workspaces/${ws.id}/requests/${r.id}/reanalyze`); setTimeout(() => openRequest(r.id), 1500); }
-        catch (err) { alert(err.message); e.target.disabled = false; }
+        catch (err) { uiAlert(err.message); e.target.disabled = false; }
       } }, 'Re-run AI')),
     aiLine && h('p', { class: 'insight-summary' }, aiLine),
     flags.length
@@ -406,7 +427,7 @@ $('request-form').addEventListener('submit', async (e) => {
       : await post(`/api/workspaces/${ws.id}/requests`, body);
     // Receipts picked in the form are uploaded once the request exists.
     if (!editing && $('rq-files').files.length) {
-      try { await uploadFiles(saved.id, [...$('rq-files').files]); } catch (err) { alert(`The request was submitted, but a file wasn't attached: ${err.message}`); }
+      try { await uploadFiles(saved.id, [...$('rq-files').files]); } catch (err) { await uiAlert(`Your request was submitted, but a file wasn't attached: ${err.message} You can attach it from the request.`, 'Request submitted'); }
     }
     $('request-dialog').close();
     showTab('requests');
@@ -486,7 +507,7 @@ $('away-form').addEventListener('submit', async (e) => {
   try {
     const res = await send('PUT', `/api/workspaces/${ws.id}/away`, { away_from: $('away-from').value || null, away_until: $('away-until').value, delegate_id: Number($('away-delegate').value) || null });
     $('away-dialog').close();
-    if (res.moved) alert(`${res.moved} waiting approval(s) moved to your delegate.`);
+    if (res.moved) await uiAlert(`${res.moved} waiting approval(s) moved to your delegate.`, 'Out of office is on');
     await showWorkspace(ws.id);
   } catch (err) { $('away-error').textContent = err.message; $('away-error').hidden = false; }
 });
@@ -532,7 +553,7 @@ $('slack-form').addEventListener('submit', async (e) => {
   $('slack-save').disabled = false;
 });
 $('slack-off').addEventListener('click', async () => {
-  if (!confirm('Disconnect Slack?')) return;
+  if (!(await uiConfirm('Disconnect Slack?', { text: 'Greenlight will stop posting to your Slack channel.', ok: 'Disconnect', danger: true }))) return;
   const s = await send('DELETE', `/api/workspaces/${ws.id}/slack`);
   renderSlack(s.slack);
   notice($('slack-msg'), 'Slack disconnected.', true);
@@ -578,7 +599,7 @@ async function loadDepartments() {
           } catch (err) { notice($('dept-msg'), err.message, false); }
         } }, 'Save'),
         h('button', { class: 'link-btn danger', type: 'button', onclick: async () => {
-          if (!confirm(`Delete the ${d.name} department? People and past requests stay; they just won't have a department.`)) return;
+          if (!(await uiConfirm(`Delete the ${d.name} department?`, { text: "People and past requests stay; they just won't have a department.", ok: 'Delete', danger: true }))) return;
           try { await send('DELETE', `/api/workspaces/${ws.id}/departments/${d.id}`); ws = await api(`/api/workspaces/${ws.id}`); loadDepartments(); }
           catch (err) { notice($('dept-msg'), err.message, false); }
         } }, 'Delete')));
@@ -612,7 +633,7 @@ function renderCurrency(s) {
 $('rates-save').addEventListener('click', async () => {
   try {
     if ($('set-base').value !== ws.base_currency) {
-      if (!confirm(`Change the base currency to ${$('set-base').value}? Exchange rates will need to be set again.`)) return;
+      if (!(await uiConfirm(`Change the base currency to ${$('set-base').value}?`, { text: 'Exchange rates will need to be set again.', ok: 'Change' }))) return;
       await send('PATCH', `/api/workspaces/${ws.id}/settings`, { base_currency: $('set-base').value });
       ws = await api(`/api/workspaces/${ws.id}`);
       await loadSettings();
@@ -700,7 +721,7 @@ async function loadBalances() {
     h('td', {}, isAdmin
       ? h('input', { type: 'text', inputmode: 'numeric', value: String(b.allowance), class: 'allowance', 'aria-label': `Days per year for ${b.name}`, onchange: async (e) => {
           try { await send('PATCH', `/api/workspaces/${ws.id}/time-off/allowance/${b.user_id}`, { vacation_days: e.target.value.trim() === '' ? null : Number(e.target.value) }); loadBalances(); }
-          catch (err) { alert(err.message); loadBalances(); }
+          catch (err) { uiAlert(err.message); loadBalances(); }
         } })
       : String(b.allowance), b.custom ? h('small', { class: 'muted' }, ' custom') : ''),
     h('td', {}, String(b.used)),
@@ -880,7 +901,7 @@ function renderMembers() {
       : deptName;
     const remove = isAdmin && m.id !== me.user.id
       ? h('button', { class: 'link-btn danger', type: 'button', onclick: async () => {
-          if (!confirm(`Remove ${m.name} from ${ws.name}?`)) return;
+          if (!(await uiConfirm(`Remove ${m.name}?`, { text: `They will lose access to ${ws.name}.`, ok: 'Remove', danger: true }))) return;
           try {
             await send('DELETE', `/api/workspaces/${ws.id}/members/${m.id}`);
             ws = await api(`/api/workspaces/${ws.id}`);
@@ -916,7 +937,7 @@ async function loadInvitations() {
         } catch (err) { notice($('invite-msg'), err.message, false); e.target.disabled = false; }
       } }, 'Resend'),
       h('button', { class: 'link-btn danger', type: 'button', onclick: async () => {
-        if (!confirm(`Revoke the invitation for ${inv.email}?`)) return;
+        if (!(await uiConfirm(`Revoke the invitation for ${inv.email}?`, { text: 'Their invite link will stop working.', ok: 'Revoke', danger: true }))) return;
         try {
           await send('DELETE', `/api/workspaces/${ws.id}/invitations/${inv.id}`);
           notice($('invite-msg'), `Invitation for ${inv.email} revoked.`, true);
@@ -1077,7 +1098,7 @@ $('onboarding-demo').addEventListener('click', async (e) => {
   try {
     const body = await post('/auth/demo');
     location.assign(body.next || '/app');
-  } catch (err) { alert(err.message); }
+  } catch (err) { uiAlert(err.message); }
 });
 $('create-form').addEventListener('submit', (e) => { e.preventDefault(); createWorkspace($('create-name').value, $('create-error'), $('create-btn')); });
 $('new-ws').addEventListener('click', () => { $('dialog-name').value = ''; $('dialog-error').hidden = true; $('ws-dialog').showModal(); });
