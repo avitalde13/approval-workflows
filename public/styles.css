@@ -381,3 +381,12 @@ select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px 
 @media (prefers-reduced-motion: reduce) { .dd-list { animation: none; } }
 input[type="file"]::file-selector-button { font: inherit; font-weight: 600; margin-right: 10px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; }
 input[type="file"]::file-selector-button:hover { border-color: var(--brand); color: var(--brand); }
+
+/* File picker: our button instead of the browser's */
+.file-pick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; position: relative; }
+.file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+.file-btn { cursor: pointer; margin: 0; }
+.file-btn:hover { border-color: var(--brand); color: var(--brand); }
+.file-input:focus-visible + .file-btn { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.file-names { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+.file-names.picked { color: var(--text); }

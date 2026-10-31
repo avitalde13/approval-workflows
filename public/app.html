@@ -307,7 +307,11 @@
       </div>
       <div class="field" id="rq-files-field">
         <label for="rq-files">Receipts or invoices <span class="muted">(optional, photos or PDF, up to 5 MB each)</span></label>
-        <input type="file" id="rq-files" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" multiple>
+        <div class="file-pick">
+          <input type="file" id="rq-files" class="file-input" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" multiple>
+          <label for="rq-files" class="btn btn-secondary btn-small file-btn">📎 Choose files</label>
+          <span class="file-names" id="rq-file-names">No file chosen</span>
+        </div>
       </div>
       <p class="error" id="rq-error" hidden></p>
       <div class="dialog-actions">

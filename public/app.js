@@ -372,6 +372,7 @@ function openRequestForm(r = null) {
   $('rq-btn').textContent = r ? 'Resubmit for approval' : 'Submit for approval';
   $('rq-type').disabled = Boolean(r);
   $('rq-files-field').hidden = Boolean(r);
+  showPickedFiles();
   if (r) {
     $('rq-type').value = r.type;
     $('rq-title').value = r.title;
@@ -383,6 +384,14 @@ function openRequestForm(r = null) {
   $('request-dialog').showModal();
 }
 $('new-request').addEventListener('click', () => openRequestForm());
+
+// The file picker's own button is hidden; ours shows what was picked.
+function showPickedFiles() {
+  const files = [...$('rq-files').files];
+  $('rq-file-names').textContent = files.length ? files.map((f) => `${f.name} (${fileSize(f.size)})`).join(', ') : 'No file chosen';
+  $('rq-file-names').classList.toggle('picked', files.length > 0);
+}
+$('rq-files').addEventListener('change', showPickedFiles);
 $('request-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const type = $('rq-type').value;
