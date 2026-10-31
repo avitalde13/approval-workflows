@@ -32,7 +32,7 @@ function loadSession(pool) {
     if (!token) return next();
     try {
       const { rows } = await pool.query(
-        `SELECT s.id AS session_id, u.id, u.email, u.name, u.avatar_url, u.is_demo
+        `SELECT s.id AS session_id, u.id, u.email, u.name, u.avatar_url, u.is_demo, (u.google_sub IS NOT NULL) AS google
            FROM sessions s JOIN users u ON u.id = s.user_id
           WHERE s.id = $1 AND s.expires_at > NOW()`,
         [hash(token)]

@@ -121,7 +121,8 @@ document.querySelectorAll('dialog [data-close]').forEach((b) => b.addEventListen
 
 async function load(selectId) {
   me = await api('/api/me');
-  $('avatar').replaceWith(Object.assign(avatarEl(me.user), { id: 'avatar', title: `${me.user.name} (${me.user.email})` }));
+  $('avatar').replaceWith(Object.assign(avatarEl(me.user), { id: 'avatar' }));
+  $('account-btn').title = `${me.user.name} (${me.user.email})`;
   const hasWs = me.workspaces.length > 0;
   $('onboarding').hidden = hasWs;
   $('workspace').hidden = !hasWs;
@@ -473,6 +474,7 @@ async function loadNotifications() {
 $('bell').addEventListener('click', (e) => {
   e.stopPropagation();
   const open = $('bell-panel').hidden;
+  closeAccount();
   $('bell-panel').hidden = !open;
   $('bell').setAttribute('aria-expanded', String(open));
   if (open) loadNotifications();
@@ -1107,10 +1109,53 @@ $('dialog-form').addEventListener('submit', async (e) => {
   if (await createWorkspace($('dialog-name').value, $('dialog-error'), $('dialog-btn'))) $('ws-dialog').close();
 });
 $('ws-select').addEventListener('change', (e) => showWorkspace(Number(e.target.value)));
-$('logout').addEventListener('click', async () => {
+async function signOut() {
   await post('/auth/logout').catch(() => {});
   location.assign('/');
+}
+$('logout').addEventListener('click', signOut);
+
+// ---------- Account menu (click your picture) ----------
+
+function renderAccount() {
+  const u = me.user;
+  const big = avatarEl(u);
+  big.classList.add('avatar-lg');
+  const how = u.is_demo ? 'Demo account' : u.google ? 'Signed in with Google' : 'Developer login';
+  const mine = ws?.members?.find((m) => m.id === u.id);
+  const away = mine?.away_until && mine.away_until >= today();
+  const item = (label, onclick, cls = '') => h('button', { class: `account-item ${cls}`, type: 'button', onclick: () => { closeAccount(); onclick(); } }, label);
+  $('account-panel').replaceChildren(
+    h('div', { class: 'account-head' }, big,
+      h('div', { class: 'account-who' }, h('strong', {}, u.name), h('span', { class: 'account-email' }, u.email),
+        h('span', { class: 'account-how' }, u.google && !u.is_demo ? h('img', { src: 'https://www.google.com/favicon.ico', alt: '', width: 12, height: 12 }) : '', how))),
+    ws && h('div', { class: 'account-ws' },
+      h('span', { class: 'muted' }, 'Workspace'), h('strong', {}, ws.name), roleBadge(ws.role),
+      me.workspaces.length > 1 && h('span', { class: 'muted' }, ` · you're in ${me.workspaces.length} workspaces`)),
+    h('div', { class: 'account-list' },
+      ws && item(away ? `🌴 Out of office until ${fmtDay(mine.away_until)}` : '🌴 Set out of office', openAway),
+      ws && item('🗓️ My time off', () => showTab('timeoff')),
+      item('➕ New workspace', () => $('new-ws').click()),
+      u.google && !u.is_demo && h('a', { class: 'account-item', href: 'https://myaccount.google.com/', target: '_blank', rel: 'noopener' }, '⚙️ Manage your Google account ↗')),
+    h('div', { class: 'account-foot' },
+      h('a', { href: '/privacy', target: '_blank' }, 'Privacy'), ' · ', h('a', { href: '/terms', target: '_blank' }, 'Terms')),
+    item('Sign out', signOut, 'account-signout'));
+}
+function closeAccount() {
+  $('account-panel').hidden = true;
+  $('account-btn').setAttribute('aria-expanded', 'false');
+}
+$('account-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = $('account-panel').hidden;
+  $('bell-panel').hidden = true;
+  if (open) renderAccount();
+  $('account-panel').hidden = !open;
+  $('account-btn').setAttribute('aria-expanded', String(open));
 });
+$('account-panel').addEventListener('click', (e) => e.stopPropagation());
+document.addEventListener('click', closeAccount);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAccount(); });
 
 // Links from emails: /app?ws=<id>&request=<id>
 (async () => {

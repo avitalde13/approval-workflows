@@ -397,3 +397,23 @@ input[type="file"]::file-selector-button:hover { border-color: var(--brand); col
 .ui-dialog p { margin: 0 0 18px; color: var(--muted); line-height: 1.55; }
 .ui-dialog .btn-danger { background: #dc2626; color: #fff; }
 .ui-dialog .btn-danger:hover { background: #b91c1c; }
+
+/* Account menu */
+.account-wrap { position: relative; }
+.account-btn { padding: 0; border: 2px solid transparent; border-radius: 50%; background: none; cursor: pointer; display: grid; transition: border-color .15s; }
+.account-btn:hover, .account-btn[aria-expanded="true"] { border-color: var(--brand); }
+.account-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.account-panel { position: absolute; right: 0; top: 46px; width: min(320px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,.28); z-index: 40; overflow: hidden; }
+.account-head { display: flex; gap: 12px; align-items: center; padding: 16px; border-bottom: 1px solid var(--border); }
+.avatar-lg { width: 48px; height: 48px; font-size: 17px; }
+.account-who { display: grid; gap: 2px; min-width: 0; }
+.account-email { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-how { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.account-ws { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.account-list { display: grid; padding: 6px; border-bottom: 1px solid var(--border); }
+.account-item { display: block; width: 100%; text-align: left; padding: 9px 10px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; }
+.account-item:hover { background: var(--brand-soft); }
+.account-foot { padding: 10px 16px 0; font-size: 13px; color: var(--muted); }
+.account-foot a { color: var(--muted); }
+.account-signout { margin: 4px 6px 6px; width: calc(100% - 12px); color: var(--danger); font-weight: 600; }
+@media (max-width: 640px) { .account-panel { position: fixed; right: 16px; left: 16px; top: 64px; width: auto; } }

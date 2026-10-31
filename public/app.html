@@ -23,8 +23,13 @@
           <ul class="bell-list" id="bell-list"></ul>
         </div>
       </div>
-      <span class="avatar" id="avatar" title=""></span>
-      <button class="btn btn-secondary" id="logout" type="button">Sign out</button>
+      <div class="account-wrap">
+        <button class="account-btn" id="account-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Your account">
+          <span class="avatar" id="avatar"></span>
+        </button>
+        <div class="account-panel" id="account-panel" hidden></div>
+      </div>
+      <button class="btn btn-secondary hide-sm" id="logout" type="button">Sign out</button>
     </div>
   </header>
 
