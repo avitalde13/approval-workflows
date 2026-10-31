@@ -339,3 +339,45 @@ input[type="file"] { font: inherit; font-size: 14px; max-width: 100%; }
 .name-tips { text-align: left; max-width: 520px; margin: 0 auto 18px; padding-left: 20px; display: grid; gap: 6px; color: var(--muted); }
 .name-tips strong { color: var(--text); }
 .name-note { margin: 14px 0 0; font-size: 14px; }
+
+/* Dropdowns: one look everywhere, with the brand-green chevron. */
+select {
+  appearance: none; -webkit-appearance: none; padding-right: 34px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 16px;
+}
+select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.dd-native { display: none !important; }
+.dd-button {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%;
+  font: inherit; font-size: 15px; text-align: left; padding: 9px 34px 9px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background-color: var(--card); color: var(--text); cursor: pointer; position: relative;
+  transition: border-color .15s, box-shadow .15s;
+}
+.dd-button::after {
+  content: ""; position: absolute; right: 10px; top: 50%; width: 16px; height: 16px; margin-top: -8px; transition: transform .15s;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23059669' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / 16px no-repeat;
+}
+.dd-button:hover { border-color: var(--muted); }
+.dd-button:focus-visible, .dd-button.dd-open { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.dd-button.dd-open::after { transform: rotate(180deg); }
+.dd-button:disabled { opacity: .6; cursor: default; }
+.dd-wide { display: flex; width: 100%; }
+.dd-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-list {
+  position: fixed; z-index: 1000; margin: 0; padding: 4px; list-style: none; overflow-y: auto; max-width: min(420px, calc(100vw - 16px));
+  background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .28); animation: dd-in .12s ease-out;
+}
+@keyframes dd-in { from { opacity: 0; transform: translateY(-4px); } }
+.dd-option { padding: 8px 12px 8px 32px; border-radius: 8px; font-size: 15px; cursor: pointer; position: relative; white-space: nowrap; }
+.dd-option.dd-active { background: var(--brand-soft); }
+.dd-option[aria-selected="true"] { font-weight: 700; color: var(--brand); }
+.dd-option[aria-selected="true"]::before { content: "✓"; position: absolute; left: 11px; }
+.dd-option[aria-disabled="true"] { opacity: .5; cursor: default; }
+/* Inside the green demo bar */
+.demo-view .dd-button { font-size: 14px; padding: 6px 32px 6px 10px; border-color: rgba(255,255,255,.25); background-color: #022c22; color: #ecfdf5; }
+.demo-view .dd-button::after { filter: brightness(1.8); }
+@media (prefers-reduced-motion: reduce) { .dd-list { animation: none; } }
+input[type="file"]::file-selector-button { font: inherit; font-weight: 600; margin-right: 10px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; }
+input[type="file"]::file-selector-button:hover { border-color: var(--brand); color: var(--brand); }
